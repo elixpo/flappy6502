@@ -70,6 +70,12 @@ if /CS [20] is connected to A15 but /OE or /WE float, it can fight the ROM on th
 If it's on the board but not wired yet: tie its /CS [20] to +5V (always deselected).
 
 
+RESULT 2026-10-22: PASSED (blink.bin). Notes from bring-up:
+  - The rail read 2.1 V at CPU pin 8 on an Arduino Nano's 5 V pin; use a supply that holds
+    4.75-5.25 V under the ~300 mA load (Uno over USB, or a 5 V phone charger).
+  - LED ON while reset is held is correct: /RES also clears U5, so QA = 0.
+Second test: build/count.bin (python3 tools/mkcount.py) = 4-bit binary counter on QA-QD.
+
 EXPECTED RESULT
 ---------------
 Power on, press and release /RES:  LED on ~0.5 s, off ~0.5 s, repeating.

@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-"""Build the stage-2 ROM test image (blink the LCD latch) for the 28C64.
+"""Stage-2 ROM test: blink the LCD latch (all 4 outputs together, ~0.5 s on/off).
 
-No assembler is needed: the program is hand-assembled below. Output is a full
-8192-byte image for the Nano28C64 programmer. Image offset 0 = CPU $E000.
-
-    python3 tools/mkblink.py            -> build/blink.bin
+    python3 tools/mkblink.py            -> build/blink.bin   (CRC-16 B37E)
 """
-from pathlib import Path
+from rom import write
 
-ROM_BASE = 0xE000
-ROM_SIZE = 0x2000
-
-# addr   bytes        source
 PROGRAM = [
     (0xE000, [0x78],             "reset:  sei"),
     (0xE001, [0xD8],             "        cld"),
@@ -43,37 +36,5 @@ VECTORS = {
     0xFFFE: 0xE026,  # IRQ/BRK
 }
 
-
-def build() -> bytes:
-    rom = bytearray([0xFF] * ROM_SIZE)
-    expected = ROM_BASE
-    for addr, data, _src in PROGRAM:
-        assert addr == expected, f"gap/overlap at ${addr:04X} (expected ${expected:04X})"
-        rom[addr - ROM_BASE:addr - ROM_BASE + len(data)] = data
-        expected = addr + len(data)
-    for addr, target in VECTORS.items():
-        rom[addr - ROM_BASE] = target & 0xFF
-        rom[addr - ROM_BASE + 1] = target >> 8
-    return bytes(rom)
-
-
-def check_branches() -> None:
-    """Verify every relative branch lands on the intended label."""
-    labels = {src.split(":")[0]: addr for addr, _d, src in PROGRAM if ":" in src.split(";")[0]}
-    for addr, data, src in PROGRAM:
-        if data[0] == 0xD0:  # BNE
-            target = addr + 2 + (data[1] - 256 if data[1] > 127 else data[1])
-            label = src.split()[-1] if ";" not in src else src.split(";")[0].split()[-1]
-            assert labels[label] == target, f"bad branch at ${addr:04X}"
-
-
 if __name__ == "__main__":
-    check_branches()
-    image = build()
-    out = Path(__file__).resolve().parent.parent / "build" / "blink.bin"
-    out.parent.mkdir(exist_ok=True)
-    out.write_bytes(image)
-    print(f"wrote {out} ({len(image)} bytes, program {PROGRAM[-1][0] + 1 - ROM_BASE} bytes)")
-    for addr, data, src in PROGRAM:
-        print(f"  ${addr:04X}  {' '.join(f'{b:02X}' for b in data):<9} {src}")
-    print("  vectors: " + ", ".join(f"${a:04X}->${t:04X}" for a, t in VECTORS.items()))
+    write("blink", PROGRAM, VECTORS)
