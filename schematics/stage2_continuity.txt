@@ -1,0 +1,57 @@
+STAGE 2 CONTINUITY CHECKLIST  (power OFF, meter on beep/ohms, probe chip pins, not breadboard holes)
+=================================================================================================
+
+CPU = R6502P   ROM = 28C64   U4 = 74LS00   U5 = 74LS161 (LCD latch)   U6 = 74LS161 (clock)
+Every group below must beep together. Tick each one.
+
+ADDRESS BUS (CPU -> ROM)
+[ ] A0   CPU 9  - ROM 10          [ ] A7   CPU 16 - ROM 3
+[ ] A1   CPU 10 - ROM 9           [ ] A8   CPU 17 - ROM 25
+[ ] A2   CPU 11 - ROM 8           [ ] A9   CPU 18 - ROM 24
+[ ] A3   CPU 12 - ROM 7           [ ] A10  CPU 19 - ROM 21
+[ ] A4   CPU 13 - ROM 6           [ ] A11  CPU 20 - ROM 23
+[ ] A5   CPU 14 - ROM 5           [ ] A12  CPU 22 - ROM 2
+[ ] A6   CPU 15 - ROM 4
+[ ] A13  CPU 23 - (nothing yet)
+
+DATA BUS
+[ ] D0   CPU 33 - ROM 11 - U5 3   [ ] D4   CPU 29 - ROM 16
+[ ] D1   CPU 32 - ROM 12 - U5 4   [ ] D5   CPU 28 - ROM 17
+[ ] D2   CPU 31 - ROM 13 - U5 5   [ ] D6   CPU 27 - ROM 18
+[ ] D3   CPU 30 - ROM 15 - U5 6   [ ] D7   CPU 26 - ROM 19
+
+DECODER (74LS00)
+[ ] A15     CPU 25 - U4 1 - U4 4
+[ ] A14     CPU 24 - U4 2
+[ ] R/W     CPU 34 - U4 9 - U4 10
+[ ] phi2    CPU 39 - U4 12                (NOT CPU 37)
+[ ] /ROMCS  U4 3   - U4 5 - ROM 20
+[ ] WR      U4 8   - U4 13 - ROM 22
+[ ] /IOSEL  U4 6   - U5 9
+[ ] /WSTB   U4 11  - U5 2
+
+CLOCK / RESET
+[ ] phi0    U6 11 (QD) - CPU 37
+[ ] /RES    CPU 40 - U5 1 - 10k to +5V - reset button
+
++5V  (all beep to the +5V rail)
+[ ] CPU 8    [ ] ROM 28   [ ] ROM 27 (/WE)   [ ] U4 14   [ ] U5 16   [ ] U6 16
+[ ] pull-ups (3.3k/10k) reach the rail: CPU 2 RDY, CPU 4 /IRQ, CPU 6 /NMI, CPU 38 SO
+
+GND  (all beep to the GND rail)
+[ ] CPU 1    [ ] CPU 21   [ ] ROM 14   [ ] U4 7   [ ] U5 8   [ ] U5 7 (ENP)   [ ] U5 10 (ENT)
+
+TEST LED
+[ ] +5V - 470R - LED anode;  LED cathode - U5 14 (QA)
+
+MUST NOT BEEP
+[ ] +5V rail to GND rail (expect several hundred ohms or more with chips in)
+[ ] neighbouring pins on each chip, especially the data and address pins (a solder/jumper short)
+[ ] CPU 37 to CPU 39  (clock in vs phi2 out)
+[ ] U4 3 to U4 6, U4 8 to U4 11 (gate outputs must not touch)
+[ ] Nothing left from the NOP test: no 10k resistors on D0-D7, no LED on A15
+
+THEN
+ 1. Flash the ROM: ./flash build/blink.bin  -> FLASH OK, CRC B37E.
+ 2. ROM in with the notch the right way, power on, press reset.
+ 3. LED on ~0.5 s, off ~0.5 s.
