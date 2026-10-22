@@ -1,0 +1,104 @@
+R6502P (NMOS 6502, DIP-40) - CONNECTIONS
+==========================================
+
+Two columns:
+  NOP TEST = CPU alone, data bus forced to $EA (NOP) through resistors. No ROM/RAM yet.
+  FINAL    = full system (ROM, SRAM, 74LS00 decoder U4, LCD latch U5). Do this later.
+
+Pin 1 is at the notch, top-left. Pins count down the left side (1-20), then up the right (21-40).
+
+                    +----\/----+
+    VSS (GND)   1 --|          |-- 40  /RES
+    RDY         2 --|          |-- 39  phi2 out
+    phi1 out    3 --|          |-- 38  SO
+    /IRQ        4 --|          |-- 37  phi0 in
+    NC          5 --|          |-- 36  NC
+    /NMI        6 --|          |-- 35  NC
+    SYNC        7 --|          |-- 34  R/W
+    VCC         8 --|  R6502P  |-- 33  D0
+    A0          9 --|          |-- 32  D1
+    A1         10 --|          |-- 31  D2
+    A2         11 --|          |-- 30  D3
+    A3         12 --|          |-- 29  D4
+    A4         13 --|          |-- 28  D5
+    A5         14 --|          |-- 27  D6
+    A6         15 --|          |-- 26  D7
+    A7         16 --|          |-- 25  A15
+    A8         17 --|          |-- 24  A14
+    A9         18 --|          |-- 23  A13
+    A10        19 --|          |-- 22  A12
+    A11        20 --|          |-- 21  VSS (GND)
+                    +----------+
+
+
+PIN TABLE
+---------
+Pin  Name      NOP TEST                              FINAL
+---  --------  ------------------------------------  ---------------------------------------------
+ 1   VSS       GND                                   GND
+ 2   RDY       3.3k to +5V                           3.3k to +5V (+ optional step switch)
+ 3   phi1 out  n/c                                   n/c
+ 4   /IRQ      3.3k to +5V                           3.3k to +5V
+ 5   NC        n/c                                   n/c
+ 6   /NMI      3.3k to +5V                           flap button: 10k to +5V, 100nF to GND,
+                                                     button to GND via 100R (or 3.3k pull-up
+                                                     if buttons go through the 74HC245 port)
+ 7   SYNC      n/c                                   n/c (optional: step circuit / Arduino)
+ 8   VCC       +5V, 100nF + 10uF to GND at the pin   same
+ 9   A0        n/c                                   ROM [10], SRAM [10]
+10   A1        n/c                                   ROM [9],  SRAM [9]
+11   A2        n/c                                   ROM [8],  SRAM [8]
+12   A3        n/c                                   ROM [7],  SRAM [7]
+13   A4        n/c                                   ROM [6],  SRAM [6]
+14   A5        n/c                                   ROM [5],  SRAM [5]
+15   A6        n/c                                   ROM [4],  SRAM [4]
+16   A7        n/c                                   ROM [3],  SRAM [3]
+17   A8        n/c                                   ROM [25], SRAM [25]
+18   A9        n/c                                   ROM [24], SRAM [24]
+19   A10       n/c                                   ROM [21], SRAM [21]
+20   A11       n/c                                   ROM [23], SRAM [23]
+21   VSS       GND                                   GND
+22   A12       n/c                                   ROM [2],  SRAM [2]
+23   A13       n/c (optional LED, flickers ~19 Hz)   SRAM [26]        (not to ROM)
+24   A14       n/c (optional LED, blinks ~9.5 Hz)    SRAM [1], U4 [2]
+25   A15       LED + 1k to GND (blinks ~4.8 Hz)      SRAM [20] /CS, U4 [1], U4 [4]
+26   D7        4.7k to +5V   (1)                     ROM [19], SRAM [19]
+27   D6        4.7k to +5V   (1)                     ROM [18], SRAM [18]
+28   D5        4.7k to +5V   (1)                     ROM [17], SRAM [17]
+29   D4        4.7k to GND   (0)                     ROM [16], SRAM [16]
+30   D3        4.7k to +5V   (1)                     ROM [15], SRAM [15], U5 [6] (D)
+31   D2        4.7k to GND   (0)                     ROM [13], SRAM [13], U5 [5] (C)
+32   D1        4.7k to +5V   (1)                     ROM [12], SRAM [12], U5 [4] (B)
+33   D0        4.7k to GND   (0)                     ROM [11], SRAM [11], U5 [3] (A)
+34   R/W       n/c                                   U4 [9] and U4 [10]
+35   NC        n/c                                   n/c
+36   NC        n/c                                   n/c
+37   phi0 in   U6 [11] QD (625 kHz)                  same
+38   SO        3.3k to +5V                           3.3k to +5V
+39   phi2 out  n/c                                   U4 [12]   (decode MUST use this pin, not phi0)
+40   /RES      10k to +5V, pushbutton to GND,        same, also U5 [1] /CLR and LCD RST
+               1uF to GND
+
+ROM = 28C64 (U2), SRAM = HY62CT08081E (U3), U4 = 74LS00 decoder, U5 = 74LS161 LCD latch,
+U6 = 74LS161 clock divider. [n] = pin number on that chip.
+
+
+NOP TEST: WHAT TO EXPECT
+------------------------
+D7..D0 = 1110 1010 = $EA = NOP. The CPU reads NOP from every address, so it runs NOPs
+forever and the address counts up by 1 every 2 clocks.
+
+  625 kHz / 2 cycles = 312,500 addresses per second
+  A15 has a period of 65,536 addresses = 131,072 cycles -> 625,000 / 131,072 = ~4.8 Hz
+
+  Blink rates (one on+off cycle) at 625 kHz:
+    A15 ~4.8 Hz    A14 ~9.5 Hz    A13 ~19 Hz (looks like a flicker)
+
+Steps:
+ 1. Power on, press and release /RES.
+ 2. A15 LED should blink steadily at ~4.8 Hz.
+ 3. No blink? Check pin 1 = GND (not +5V!), pin 37 has the clock, /RES is high after
+    release, RDY is high, and the CPU gets 5 V at pin 8.
+
+Why resistors on D0-D7 and not wires: during reset and on some cycles the CPU drives the
+data bus itself. 4.7k lets it do that safely while still presenting $EA when it reads.
