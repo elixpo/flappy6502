@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Program the 28C64 via the Nano28C64 programmer, with full read-back verification.
+#   ./flash build/blink.bin          program + verify + independent re-verify
+#   ./flash verify build/blink.bin   only compare the chip with an image
+#   ./flash dump out.bin             read the whole chip to a file
+#   ./flash ports                    list serial ports
+# Extra options (e.g. -p /dev/ttyUSB0) are passed through.
+set -euo pipefail
+cd "$(dirname "$0")"
+case "${1:-}" in
+  ports|info|program|flash|verify|dump|-h|--help|--version) ;;
+  "") set -- --help ;;
+  *) set -- flash "$@" ;;
+esac
+PYTHONPATH=programmer exec uv run --quiet python -m eeprom28c64 "$@"
