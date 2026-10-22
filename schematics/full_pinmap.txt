@@ -1,0 +1,188 @@
+FULL PIN MAP - everything wired so far (stage 2: clock + CPU + ROM + decoder + latch)
+=====================================================================================
+
+Every pin of every chip is listed. "n/c" = nothing connected.
+Check continuity with the power OFF, probing chip pins (not breadboard holes).
+
+Chips:
+  CPU = R6502P       (DIP-40)  top board
+  ROM = 28C64        (DIP-28)  top board
+  U4  = 74LS00       (DIP-14)  top board     address decoder
+  U5  = 74LS161      (DIP-16)  bottom board  LCD latch (test LED for now)
+  U6  = 74LS161      (DIP-16)  bottom board  clock divider
+  U9  = 74LS04       (DIP-14)  bottom board  crystal oscillator
+  X1  = 10 MHz crystal
+  SRAM: not wired yet. If it is on the board, only its /CS (pin 20) to +5V.
+
+
+=== CPU  R6502P ===================================================================
+Pin  Name       Connects to
+ 1   VSS        GND
+ 2   RDY        pull-up resistor to +5V
+ 3   phi1 out   n/c
+ 4   /IRQ       pull-up resistor to +5V
+ 5   NC         n/c
+ 6   /NMI       pull-up resistor to +5V
+ 7   SYNC       n/c
+ 8   VCC        +5V  (100nF + 10uF to GND)
+ 9   A0         ROM 10
+10   A1         ROM 9
+11   A2         ROM 8
+12   A3         ROM 7
+13   A4         ROM 6
+14   A5         ROM 5
+15   A6         ROM 4
+16   A7         ROM 3
+17   A8         ROM 25
+18   A9         ROM 24
+19   A10        ROM 21
+20   A11        ROM 23
+21   VSS        GND
+22   A12        ROM 2
+23   A13        n/c (SRAM later)
+24   A14        U4 2
+25   A15        U4 1, U4 4
+26   D7         ROM 19
+27   D6         ROM 18
+28   D5         ROM 17
+29   D4         ROM 16
+30   D3         ROM 15, U5 6
+31   D2         ROM 13, U5 5
+32   D1         ROM 12, U5 4
+33   D0         ROM 11, U5 3
+34   R/W        U4 9, U4 10
+35   NC         n/c
+36   NC         n/c
+37   phi0 in    U6 11
+38   SO         pull-up resistor to +5V
+39   phi2 out   U4 12
+40   /RES       U5 1, 10k to +5V, reset button to GND (+ 1uF to GND)
+
+
+=== ROM  28C64 ====================================================================
+Pin  Name       Connects to
+ 1   RDY/BUSY   n/c
+ 2   A12        CPU 22
+ 3   A7         CPU 16
+ 4   A6         CPU 15
+ 5   A5         CPU 14
+ 6   A4         CPU 13
+ 7   A3         CPU 12
+ 8   A2         CPU 11
+ 9   A1         CPU 10
+10   A0         CPU 9
+11   D0         CPU 33
+12   D1         CPU 32
+13   D2         CPU 31
+14   GND        GND
+15   D3         CPU 30
+16   D4         CPU 29
+17   D5         CPU 28
+18   D6         CPU 27
+19   D7         CPU 26
+20   /CE        U4 3
+21   A10        CPU 19
+22   /OE        U4 8
+23   A11        CPU 20
+24   A9         CPU 18
+25   A8         CPU 17
+26   NC         n/c
+27   /WE        +5V
+28   VCC        +5V  (100nF to GND)
+
+
+=== U4  74LS00  (decoder) =========================================================
+Pin  Name       Connects to
+ 1   1A         CPU 25 (A15)
+ 2   1B         CPU 24 (A14)
+ 3   1Y /ROMCS  ROM 20, U4 5
+ 4   2A         CPU 25 (A15)
+ 5   2B         U4 3
+ 6   2Y /IOSEL  U5 9
+ 7   GND        GND
+ 8   3Y WR      ROM 22, U4 13
+ 9   3A         CPU 34 (R/W)
+10   3B         CPU 34 (R/W)
+11   4Y /WSTB   U5 2
+12   4A         CPU 39 (phi2 out)
+13   4B         U4 8
+14   VCC        +5V  (100nF to GND)
+
+
+=== U5  74LS161  (LCD latch, $8000) ===============================================
+Pin  Name       Connects to
+ 1   /CLR       CPU 40 (/RES)
+ 2   CLK        U4 11
+ 3   A          CPU 33 (D0)
+ 4   B          CPU 32 (D1)
+ 5   C          CPU 31 (D2)
+ 6   D          CPU 30 (D3)
+ 7   ENP        GND
+ 8   GND        GND
+ 9   /LOAD      U4 6
+10   ENT        GND
+11   QD         n/c   (later LCD CS)
+12   QC         n/c   (later LCD DC)
+13   QB         n/c   (later LCD SCL)
+14   QA         test LED cathode   (+5V - 470R - LED anode)   (later LCD SDA)
+15   RCO        n/c
+16   VCC        +5V  (100nF to GND)
+
+
+=== U6  74LS161  (clock divider) ==================================================
+Pin  Name       Connects to
+ 1   /CLR       +5V
+ 2   CLK        U9 6
+ 3   A          GND
+ 4   B          GND
+ 5   C          GND
+ 6   D          GND
+ 7   ENP        +5V
+ 8   GND        GND
+ 9   /LOAD      +5V
+10   ENT        +5V
+11   QD         CPU 37   (625 kHz)
+12   QC         n/c
+13   QB         n/c
+14   QA         n/c
+15   RCO        n/c
+16   VCC        +5V  (100nF to GND)
+
+
+=== U9  74LS04  (crystal oscillator) ==============================================
+Pin  Name       Connects to
+ 1   1A         X1 leg A, R1 (560R) to U9 2
+ 2   1Y         R1 (560R) to U9 1, C1 (100nF) to U9 3
+ 3   2A         C1 (100nF) from U9 2, R2 (560R) to U9 4
+ 4   2Y         R2 (560R) to U9 3, X1 leg B, U9 5
+ 5   3A         U9 4
+ 6   3Y         U6 2
+ 7   GND        GND
+ 8   4Y         n/c
+ 9   4A         GND   (was the A15 LED buffer in the NOP test; return it to GND)
+10   5Y         n/c
+11   5A         GND
+12   6Y         n/c
+13   6A         GND
+14   VCC        +5V  (100nF to GND)
+
+
+=== NET VIEW (same wiring, grouped by signal) =====================================
+A15     CPU 25, U4 1, U4 4
+A14     CPU 24, U4 2
+R/W     CPU 34, U4 9, U4 10
+phi2    CPU 39, U4 12
+phi0    CPU 37, U6 11
+/RES    CPU 40, U5 1, 10k to +5V, reset button
+/ROMCS  U4 3, U4 5, ROM 20
+WR      U4 8, U4 13, ROM 22
+/IOSEL  U4 6, U5 9
+/WSTB   U4 11, U5 2
+10MHz   U9 6, U6 2
+D0..D3  CPU 33/32/31/30, ROM 11/12/13/15, U5 3/4/5/6
+D4..D7  CPU 29/28/27/26, ROM 16/17/18/19
++5V     CPU 8, ROM 27, ROM 28, U4 14, U5 16, U6 1, U6 7, U6 9, U6 10, U6 16, U9 14, pull-ups
+GND     CPU 1, CPU 21, ROM 14, U4 7, U5 7, U5 8, U5 10, U6 3-6, U6 8, U9 7, U9 9, U9 11, U9 13
+
+MUST NOT BEEP: +5V to GND; CPU 37 to CPU 39; any two U4 outputs (3, 6, 8, 11) to each other;
+               neighbouring address/data pins.
