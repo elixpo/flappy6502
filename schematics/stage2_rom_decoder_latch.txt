@@ -1,0 +1,86 @@
+STAGE 2 - ROM + DECODER + LATCH  (test: blink an LED from a program in the 28C64)
+===================================================================================
+
+First REMOVE from the NOP test: the 8 data-bus resistors and the A15 LED/74LS04 buffer.
+Keep: clock (U9 + U6), power, CPU pull-ups (RDY, /IRQ, /NMI, SO), the /RES network.
+
+Firmware: build/blink.bin (8192 bytes)  ->  flash with the Nano28C64 programmer.
+          Rebuild with: python3 tools/mkblink.py
+
+[n] = pin number on that chip.  CPU = R6502P.  "+5V"/"GND" = rails, 100nF at every chip.
+
+
+U2  28C64 EEPROM  (DIP-28, notch = pin 1 end)
+--------------------------------------------
+  [1]  RDY/BUSY  n/c                     [28] VCC  +5V (100nF to GND)
+  [2]  A12  CPU [22]                     [27] /WE  +5V  (never write in circuit)
+  [3]  A7   CPU [16]                     [26] NC   n/c
+  [4]  A6   CPU [15]                     [25] A8   CPU [17]
+  [5]  A5   CPU [14]                     [24] A9   CPU [18]
+  [6]  A4   CPU [13]                     [23] A11  CPU [20]
+  [7]  A3   CPU [12]                     [22] /OE  U4 [8]   (WR)
+  [8]  A2   CPU [11]                     [21] A10  CPU [19]
+  [9]  A1   CPU [10]                     [20] /CE  U4 [3]   (/ROMCS)
+  [10] A0   CPU [9]                      [19] D7   CPU [26]
+  [11] D0   CPU [33]                     [18] D6   CPU [27]
+  [12] D1   CPU [32]                     [17] D5   CPU [28]
+  [13] D2   CPU [31]                     [16] D4   CPU [29]
+  [14] GND  GND                          [15] D3   CPU [30]
+
+
+U4  74LS00 decoder  (quad NAND, DIP-14)
+---------------------------------------
+                  +----\/----+
+   A15 CPU[25] -> |1       14| +5V (100nF to GND)
+   A14 CPU[24] -> |2       13| <- U4 [8]
+  /ROMCS       <- |3       12| <- phi2 out CPU [39]
+   A15 CPU[25] -> |4       11| -> /WSTB
+   U4 [3]      -> |5       10| <- R/W CPU [34]
+  /IOSEL       <- |6        9| <- R/W CPU [34]
+           GND -- |7        8| -> WR
+                  +----------+
+
+  G1  [1][2]->[3]    /ROMCS = NAND(A15, A14)     -> ROM /CE [20], and U4 [5]
+  G2  [4][5]->[6]    /IOSEL = NAND(A15, /ROMCS)  -> U5 /LOAD [9]
+  G3  [9][10]->[8]   WR     = NOT R/W            -> ROM /OE [22], U4 [13]  (later: SRAM /OE [22])
+  G4  [12][13]->[11] /WSTB  = NAND(phi2, WR)     -> U5 CLK [2]             (later: SRAM /WE [27])
+
+  phi2 MUST come from CPU pin 39 (phi2 out), not from the clock line on pin 37.
+
+
+U5  74LS161 latch at $8000  (DIP-16)
+------------------------------------
+  [1]  /CLR   CPU [40] /RES             [16] VCC  +5V (100nF to GND)
+  [2]  CLK    U4 [11] /WSTB             [15] RCO  n/c
+  [3]  A      CPU [33] D0               [14] QA   TEST LED (below)   later: LCD SDA
+  [4]  B      CPU [32] D1               [13] QB   n/c                later: LCD SCL
+  [5]  C      CPU [31] D2               [12] QC   n/c                later: LCD DC
+  [6]  D      CPU [30] D3               [11] QD   n/c                later: LCD CS
+  [7]  ENP    GND                       [10] ENT  GND
+  [8]  GND    GND                       [9]  /LOAD U4 [6] /IOSEL
+
+  TEST LED:  +5V -> 470R -> LED anode ... LED cathode -> U5 [14] QA
+             (the LS161 pulls current to ground well, so the LED is ON when QA is low)
+
+
+SRAM (U3) for this stage
+------------------------
+Either leave it out, or wire it fully (see hardware_plan.md). Don't leave it half-wired:
+if /CS [20] is connected to A15 but /OE or /WE float, it can fight the ROM on the bus.
+If it's on the board but not wired yet: tie its /CS [20] to +5V (always deselected).
+
+
+EXPECTED RESULT
+---------------
+Power on, press and release /RES:  LED on ~0.5 s, off ~0.5 s, repeating.
+(The program writes $0F then $00 to $8000 with a ~0.53 s delay between them.)
+
+TROUBLESHOOTING
+---------------
+ LED never changes:
+   - ROM programmed and verified? Reset vector bytes at file offset $1FFC/$1FFD = 00 E0.
+   - U4 [3] /ROMCS should pulse low (meter reads somewhere between 0 and 5 V).
+   - U4 [11] /WSTB should pulse; U4 [6] /IOSEL should pulse low.
+   - ROM /WE [27] is on +5V; ROM pins 14/28 are powered.
+ LED stuck on or off but the bus is active: check U5 ENP/ENT = GND, /LOAD from U4 [6], CLK from U4 [11].
+ Blinks at the wrong speed: wrong clock (should be 625 kHz on CPU [37]).
