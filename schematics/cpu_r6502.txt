@@ -100,5 +100,11 @@ Steps:
  3. No blink? Check pin 1 = GND (not +5V!), pin 37 has the clock, /RES is high after
     release, RDY is high, and the CPU gets 5 V at pin 8.
 
+RESULT 2026-10-22: PASSED. A15 blinks at ~4.8 Hz with 10k resistors on D0-D7.
+  - Powering from a TP4056 (Li-ion charger) sagged the rail to ~2.5 V. Use a regulated 5 V
+    supply (4.75-5.25 V). The Arduino 5 V pin was fine for this test.
+  - An NMOS 6502 output can't drive an LED brightly; buffer it through a spare 74LS04
+    inverter (LED from +5V via 470R into the inverter output). That makes the LED inverted.
+
 Why resistors on D0-D7 and not wires: during reset and on some cycles the CPU drives the
 data bus itself. 4.7k lets it do that safely while still presenting $EA when it reads.
