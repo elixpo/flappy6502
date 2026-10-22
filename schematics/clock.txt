@@ -1,0 +1,55 @@
+CLOCK: 10 MHz crystal oscillator (74LS04 = U9)  ->  /16 divider (74LS161 = U6)  ->  625 kHz to CPU
+=====================================================================================================
+
+Numbers in [ ] are IC pin numbers. The crystal has no polarity: either leg can go either way.
+Keep the crystal, R1, R2 and C1 tight against U9 with short leads.
+
+
+              R1 470R                        R2 470R
+         +----/\/\/----+                +----/\/\/----+
+         |             |                |             |
+         |   U9a       |      C1        |   U9b       |               U9c (buffer)
+   +-----+--[1]|>o[2]--+-----||-----+---+--[3]|>o[4]--+------+-----[5]|>o[6]------> 10 MHz
+   |                         100nF                           |                       to U6 [2] CLK
+   |                                                         |
+   |                      X1 10.000 MHz                      |
+   +-------------------------|[ ]|---------------------------+
+                            crystal
+
+
+
+                         U6  74LS161  (/16)
+                       +----------------+
+     10 MHz (U9 [6]) ->| [2]  CLK       |
+                       |                |
+          +5V ---------| [1]  /CLR      |
+          +5V ---------| [9]  /LOAD     |
+          +5V ---------| [7]  ENP       |
+          +5V ---------| [10] ENT       |
+                       |                |
+          GND ---------| [3]  A         |
+          GND ---------| [4]  B         |
+          GND ---------| [5]  C         |
+          GND ---------| [6]  D         |
+                       |                |
+                       |       QD  [11] |-----> 625 kHz  phi0  ->  R6502 pin 37
+                       |       QC  [12] |-----  1.25 MHz (optional, later)
+                       |       QB  [13] |       n/c
+                       |       QA  [14] |       n/c
+                       |       RCO [15] |       n/c
+                       +----------------+
+
+
+POWER / TIE-OFFS
+----------------
+U9 74LS04 : [14] -> +5V, [7] -> GND, 100nF from [14] to [7] right at the chip
+            unused inputs [9] [11] [13] -> GND, outputs [8] [10] [12] n/c (spares)
+U6 74LS161: [16] -> +5V, [8] -> GND, 100nF from [16] to [8] right at the chip
+
+
+CHECKS
+------
+1. Meter on DC volts at U9 [6]: ~1.5-2.5 V = oscillating. Steady 0 V or 5 V = not running.
+2. Pull the crystal out -> the oscillation must stop (otherwise it is running on R/C values, not the crystal).
+3. U6 [11] should also read ~2.5 V DC (625 kHz if your meter has a Hz range).
+4. Won't start? Try 330R or 1k for both R1 and R2, or 10nF for C1.
