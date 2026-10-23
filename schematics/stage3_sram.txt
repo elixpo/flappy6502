@@ -100,3 +100,4 @@ RESULT 2026-10-23: PASSED (ramtest.bin, running light QA>QD).
   from loose contacts on an old breadboard. Fixed with a 5 V 2 A adapter feeding the TP4056
   IN+/IN- pads, 470uF + 100nF across the input, and reseated/jumpered rails.
   Total current ~300 mA; an R6502 at 30-35 C is normal.
+RESULT 2026-10-23: ramsoak.bin PASSED, counting 1..15 on QA (LSB) .. QD (MSB) with no faults.
