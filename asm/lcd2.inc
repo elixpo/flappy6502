@@ -7,8 +7,9 @@
 ;
 ; Protocol: between transfers the latch holds a value with CS = 1 (the "flush" value).
 ; A transfer is a run of stores to SPI (each clocks the bit before it; the first one
-; clocks the CS-high value, which the panel ignores), ended by one store of the flush
-; value, which clocks the last real bit and parks CS high again.
+; clocks the CS-high value, which the panel ignores), ended by flush: one more store
+; to SPI (clocks the last real bit) and then FLUSH written to LAT (CS goes high while
+; SCL is low).
 ;
 ; Landscape 320x240 (MADCTL $60). Uses zero page $00-$1F.
 
@@ -101,9 +102,7 @@ sendb:  sta tmp
 :       stx SPI
 :
         .endrepeat
-        lda #FLUSH
-        sta SPI
-        rts
+        jmp flush
 
 ; ---- CASET/RASET from x0,x1,y0,y1, then RAMWR. Clobbers A, X, Y ----
 window: lda #$2A
@@ -131,7 +130,7 @@ window_y:                       ; same column range, new rows
         jmp cmd
 
 ; ---- send cnt (1..255) pixels of colour index A. Leaves X = $04, Y = $05 ----
-; The caller ends the whole pixel stream with: lda #FLUSH / sta SPI
+; The caller ends the whole pixel stream with: jsr flush
 emit:   tax
         lda run_lo,x
         sta vec
@@ -167,8 +166,13 @@ run_hi: .repeat NCOL, n
         .byte >.ident(.sprintf("run%d", n))
         .endrepeat
 
-flush:  lda #FLUSH
+; End a transfer: one more clocked store (clocks the last real bit; latches a
+; CS-low dummy), then raise CS with a latch-only write, so CS never changes
+; while SCL is high.
+flush:  lda #DC
         sta SPI
+        lda #FLUSH
+        sta LAT
         rts
 
 ; ---- ~164k cycles: 131 ms at 1.25 MHz. Clobbers X, Y ----
