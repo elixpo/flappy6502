@@ -1,0 +1,31 @@
+STAGE 5 - FLAP BUTTON on /NMI (CPU pin 6)
+==========================================
+
+Only ONE new wire goes to CPU pin 6. The existing 3.3k pull-up already on pin 6
+stays and is the pull-up for the button. Everything else is built at the button.
+
+  CPU pin 6 ── (existing 3.3k to +5V, keep it)
+      │
+      └──────────── one wire ───────────┐
+                                         │  "button node" = a free breadboard strip
+                         ┌───────────────┤
+                       100nF            100R
+                         │               │
+                        GND           button leg A
+                                      button leg B ── GND
+
+At the button:
+  1. Pick a free 5-hole strip next to the button = BUTTON NODE.
+  2. Wire:     CPU pin 6  ->  BUTTON NODE          (the only wire at pin 6)
+  3. 100nF:    BUTTON NODE  ->  GND                (debounce; ceramic "104", either way round)
+  4. 100R:     BUTTON NODE  ->  button leg A        (stops the cap being shorted directly)
+  5. Button:   leg B  ->  GND
+     4-leg button: use two DIAGONALLY opposite legs.
+
+How it works: the 3.3k holds /NMI high (~5 V). Pressing pulls it low; the 6502 takes an
+NMI on the falling edge. The 100nF smooths contact bounce; any extra bounce only re-sets
+the "flap" flag, which is harmless. Releasing recharges in well under 1 ms.
+
+CHECK (meter, DC volts): CPU pin 6 = ~5 V released, ~0 V held down.
+                         If it reads low when released: the button legs are the wrong
+                         pair (always closed). Rotate the button 90 degrees.

@@ -186,7 +186,8 @@ def check_lcd() -> list[bool]:
     b, cmds, lcd, secs = render("gfxtest.bin")
     probes = {"sky": ((10, 10), 0x4E19), "pipe body": ((210, 30), 0x75E5),
               "gap": ((212, 100), 0x4E19), "dirt": ((10, 235), 0xDED2),
-              "bird eye": ((88, 102), 0xFFDF), "bird body": ((82, 103), 0xFEC7)}
+              "bird eye": ((92, 103), 0xFFDF), "bird body": ((83, 105), 0xFEC7),
+              "sky right of bird": ((99, 108), 0x4E19)}
     bad = [f"{n}={lcd.at(x, y):04X}" for n, ((x, y), c) in probes.items() if lcd.at(x, y) != c]
     r.append(check("gfx scene", not bad,
                    f"wrong: {bad or 'none'}, done in {secs:.1f} s at 1.25 MHz "

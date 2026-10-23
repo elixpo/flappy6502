@@ -16,25 +16,31 @@ C_GREEN      = $07E0    ; #00FF00
 C_BLUE       = $001F    ; #0000FF
 C_YELLOW     = $FFE0    ; #FFFF00
 
-BIRD_W = 12
-BIRD_H = 12
+BIRD_W = 18
+BIRD_H = 18
 
 ; palette: index -> RGB565 high / low byte
 pal_hi: .byte $4E, $39, $FE, $EC, $FF, $F2, $FF
 pal_lo: .byte $19, $65, $C7, $C6, $DF, $C6, $94
 ; 0=SKY  1=OUTLINE  2=YELLOW  3=ORANGE  4=WHITE  5=BEAK  6=LIGHTYEL
 
-; bird, 4 bits per pixel, 6 bytes per row, left pixel in the high nibble
+; bird 18x18, 4 bits per pixel, 9 bytes per row, left pixel in the high nibble
 bird:
-        .byte $00, $00, $11, $11, $10, $00    ; ....KKKKK...
-        .byte $00, $11, $66, $21, $44, $10    ; ..KKLLYKWWK.
-        .byte $01, $62, $22, $14, $44, $41    ; .KLYYYKWWWWK
-        .byte $12, $22, $22, $14, $41, $41    ; KYYYYYKWWKWK
-        .byte $11, $11, $22, $14, $41, $41    ; KKKKYYKWWKWK
-        .byte $14, $44, $12, $21, $44, $10    ; KWWWKYYKWWK.
-        .byte $14, $44, $41, $22, $11, $11    ; KWWWWKYYKKKK
-        .byte $01, $44, $12, $21, $55, $51    ; .KWWKYYKRRRK
-        .byte $00, $11, $33, $15, $11, $10    ; ..KKOOKRKKK.
-        .byte $00, $13, $33, $31, $55, $10    ; ..KOOOOKRRK.
-        .byte $00, $01, $13, $33, $11, $00    ; ...KKOOOKK..
-        .byte $00, $00, $01, $11, $00, $00    ; .....KKK....
+        .byte $00, $00, $00, $11, $11, $11, $11, $00, $00    ; ......KKKKKKKK....
+        .byte $00, $00, $00, $11, $11, $11, $11, $00, $00    ; ......KKKKKKKK....
+        .byte $00, $01, $11, $66, $62, $21, $44, $41, $10    ; ...KKKLLLYYKWWWKK.
+        .byte $00, $16, $62, $22, $21, $14, $44, $44, $41    ; ..KLLYYYYKKWWWWWWK
+        .byte $00, $16, $62, $22, $21, $14, $44, $44, $41    ; ..KLLYYYYKKWWWWWWK
+        .byte $11, $22, $22, $22, $21, $14, $44, $14, $41    ; KKYYYYYYYKKWWWKWWK
+        .byte $11, $11, $11, $22, $21, $14, $44, $14, $41    ; KKKKKKYYYKKWWWKWWK
+        .byte $11, $11, $11, $22, $21, $14, $44, $14, $41    ; KKKKKKYYYKKWWWKWWK
+        .byte $11, $44, $44, $11, $22, $21, $44, $41, $10    ; KKWWWWKKYYYKWWWKK.
+        .byte $11, $44, $44, $44, $12, $22, $11, $11, $11    ; KKWWWWWWKYYYKKKKKK
+        .byte $11, $44, $44, $44, $12, $22, $11, $11, $11    ; KKWWWWWWKYYYKKKKKK
+        .byte $00, $14, $44, $11, $22, $21, $55, $55, $51    ; ..KWWWKKYYYKRRRRRK
+        .byte $00, $01, $11, $33, $31, $15, $11, $11, $10    ; ...KKKOOOKKRKKKKK.
+        .byte $00, $01, $11, $33, $31, $15, $11, $11, $10    ; ...KKKOOOKKRKKKKK.
+        .byte $00, $01, $13, $33, $33, $31, $55, $51, $10    ; ...KKOOOOOOKRRRKK.
+        .byte $00, $00, $01, $11, $33, $33, $11, $10, $00    ; .....KKKOOOOKKK...
+        .byte $00, $00, $01, $11, $33, $33, $11, $10, $00    ; .....KKKOOOOKKK...
+        .byte $00, $00, $00, $00, $11, $11, $00, $00, $00    ; ........KKKK......
