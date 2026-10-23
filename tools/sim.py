@@ -12,6 +12,8 @@ from pathlib import Path
 
 from py65.devices.mpu6502 import MPU
 
+from png import write_png
+
 BUILD = Path(__file__).resolve().parent.parent / "build"
 CLOCK_HZ = 625_000
 
@@ -105,40 +107,90 @@ def check(name: str, ok: bool, detail: str) -> bool:
     return ok
 
 
-def check_lcd() -> list[bool]:
-    b = run("lcdtest.bin", 60)
+LCD_CLOCK_HZ = 1_250_000                  # LCD programs are timed for the 1.25 MHz clock
+
+
+class Lcd:
+    """ST7789 model: follows MADCTL/CASET/RASET/RAMWR into a logical framebuffer."""
+
+    def __init__(self, cmds):
+        self.madctl = 0
+        self.fb = None
+        self.written = 0
+        xs = xe = ys = ye = 0
+        for _t, c, d in cmds:
+            if c == 0x36 and d:
+                self.madctl = d[0]
+            elif c == 0x2A and len(d) == 4:
+                xs, xe = d[0] << 8 | d[1], d[2] << 8 | d[3]
+            elif c == 0x2B and len(d) == 4:
+                ys, ye = d[0] << 8 | d[1], d[2] << 8 | d[3]
+            elif c == 0x2C:
+                self._ram_write(xs, xe, ys, ye, d)
+
+    @property
+    def size(self):
+        return (320, 240) if self.madctl & 0x20 else (240, 320)
+
+    def _ram_write(self, xs, xe, ys, ye, data):
+        w, h = self.size
+        if self.fb is None:
+            self.fb = [[0] * w for _ in range(h)]
+        x, y = xs, ys
+        for i in range(0, len(data) - 1, 2):
+            if x < w and y < h:
+                self.fb[y][x] = data[i] << 8 | data[i + 1]
+                self.written += 1
+            x += 1
+            if x > xe:
+                x, y = xs, y + 1
+
+    def at(self, x, y):
+        return self.fb[y][x]
+
+
+def render(name: str) -> tuple[Board, list, Lcd, float]:
+    b = run(name, 120)
     cmds = b.spi.commands()
-    names = [c for _t, c, _d in cmds]
+    lcd = Lcd(cmds)
+    write_png(BUILD / name.replace(".bin", "_screen.png"), lcd.fb)
+    return b, cmds, lcd, b.mpu.processorCycles / LCD_CLOCK_HZ
+
+
+def check_lcd() -> list[bool]:
     r = []
+    b, cmds, lcd, secs = render("lcdtest.bin")
     init = [(c, d) for _t, c, d in cmds[:7]]
     r.append(check("lcd init sequence",
-                   init == [(0x01, []), (0x11, []), (0x3A, [0x55]), (0x36, [0x00]),
+                   init == [(0x01, []), (0x11, []), (0x3A, [0x55]), (0x36, [0x60]),
                             (0x21, []), (0x13, []), (0x29, [])],
                    " ".join(f"{c:02X}" + (f"[{' '.join('%02X' % x for x in d)}]" if d else "")
                             for c, d in init)))
     t = {c: cyc for cyc, c, _d in cmds[:7]}
-    gaps_ms = ((t[0x11] - t[0x01]) * 1000 / CLOCK_HZ, (t[0x3A] - t[0x11]) * 1000 / CLOCK_HZ,
-               cmds[0][0] * 1000 / CLOCK_HZ)
-    r.append(check("lcd reset/sleep-out delays >= 120 ms", min(gaps_ms) >= 120,
-                   f"reset->SWRESET {gaps_ms[2]:.0f} ms, SWRESET->SLPOUT {gaps_ms[0]:.0f} ms, "
-                   f"SLPOUT->next {gaps_ms[1]:.0f} ms"))
+    gaps_ms = [g * 1000 / LCD_CLOCK_HZ for g in
+               (cmds[0][0], t[0x11] - t[0x01], t[0x3A] - t[0x11])]
+    r.append(check("lcd reset/sleep-out delays >= 120 ms at 1.25 MHz", min(gaps_ms) >= 120,
+                   "start->SWRESET {:.0f} ms, SWRESET->SLPOUT {:.0f} ms, SLPOUT->next {:.0f} ms"
+                   .format(*gaps_ms)))
+    w, h = lcd.size
+    probes = {"black bg": ((5, 5), 0x0000), "red": ((32, 120), 0xF800),
+              "green": ((96, 120), 0x07E0), "blue": ((160, 120), 0x001F),
+              "white": ((224, 120), 0xFFFF), "yellow": ((288, 120), 0xFFE0),
+              "right margin": ((316, 120), 0x0000)}
+    bad = [n for n, ((x, y), c) in probes.items() if lcd.at(x, y) != c]
+    r.append(check("lcd landscape 320x240, squares left to right",
+                   (w, h) == (320, 240) and not bad and lcd.written >= 320 * 240,
+                   f"{w}x{h}, {lcd.written} px written, wrong: {bad or 'none'}, "
+                   f"done in {secs:.1f} s at 1.25 MHz -> build/lcdtest_screen.png"))
 
-    clear = cmds[7:10]
-    ok = ([(c, d) for _t, c, d in clear[:2]] == [(0x2A, [0, 0, 0, 239]), (0x2B, [0, 0, 1, 63])]
-          and clear[2][1] == 0x2C and len(clear[2][2]) == 240 * 320 * 2 and not any(clear[2][2]))
-    r.append(check("lcd full-screen black clear", ok,
-                   f"window x 0-239 y 0-319, {len(clear[2][2])} bytes, done at "
-                   f"{cmds[10][0] / CLOCK_HZ:.1f} s" if len(cmds) > 10 else "incomplete"))
-
-    want = [(0, 0xF800), (48, 0x07E0), (96, 0x001F), (144, 0xFFFF), (192, 0xFFE0)]
-    good = len(cmds) == 25
-    for i, (x, col) in enumerate(want):
-        cw, rw, wr = cmds[10 + 3 * i: 13 + 3 * i] if good else (None, None, None)
-        good = good and cw[2] == [0, x, 0, x + 47] and rw[2] == [0, 136, 0, 183] \
-            and wr[1] == 0x2C and wr[2] == [col >> 8, col & 0xFF] * (48 * 48)
-    r.append(check("lcd five 48x48 colour squares", good,
-                   f"{len(cmds)} commands, finished at {b.mpu.processorCycles / CLOCK_HZ:.1f} s "
-                   f"then halted"))
+    b, cmds, lcd, secs = render("gfxtest.bin")
+    probes = {"sky": ((10, 10), 0x4E19), "pipe body": ((210, 30), 0x75E5),
+              "gap": ((212, 100), 0x4E19), "dirt": ((10, 235), 0xDED2),
+              "bird eye": ((88, 102), 0xFFDF), "bird body": ((82, 103), 0xFEC7)}
+    bad = [f"{n}={lcd.at(x, y):04X}" for n, ((x, y), c) in probes.items() if lcd.at(x, y) != c]
+    r.append(check("gfx scene", not bad,
+                   f"wrong: {bad or 'none'}, done in {secs:.1f} s at 1.25 MHz "
+                   f"-> build/gfxtest_screen.png"))
     return r
 
 

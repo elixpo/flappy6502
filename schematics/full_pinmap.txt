@@ -53,7 +53,7 @@ Pin  Name       Connects to
 34   R/W        U4 9, U4 10
 35   NC         n/c
 36   NC         n/c
-37   phi0 in    U6 11
+37   phi0 in    U6 12 (QC, 1.25 MHz)   [was U6 11 QD, 625 kHz]
 38   SO         pull-up resistor to +5V
 39   phi2 out   U4 12
 40   /RES       U5 1, 10k to +5V, reset button to GND (+ 1uF to GND)

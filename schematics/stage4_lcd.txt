@@ -62,3 +62,11 @@ RESULT 2026-10-23: PASSED (lcdtest.bin, CRC 69F0). Noise -> black wipe -> five s
   The display really works on the R6502 through the 74LS161 latch with bit-banged SPI.
   The final fault was loose breadboard contacts (again). The latch outputs have 4.7k pull-ups;
   LCD RST is on +5V with SWRESET in software.
+
+UPDATE 2026-10-23: landscape 320x240 (MADCTL $60) and a 1.25 MHz clock (U6 QC -> CPU 37).
+  Shared driver: asm/lcd.inc (init, window, fast fill ~13 cycles/bit, 12x12 sprite).
+  Graphics: tools/gfx.py -> asm/gfx.inc (palette, bird sprite) + build/bird.png preview.
+  lcdtest.bin: black screen, then RED GREEN BLUE WHITE YELLOW squares left to right (~17 s).
+  gfxtest.bin: sky, pipe pair with caps and shading, ground, and the bird (~16 s).
+  `make test` renders both screens to build/lcdtest_screen.png and build/gfxtest_screen.png.
+  If the picture is upside down, change MADCTL $60 to $A0 in asm/lcd.inc.

@@ -57,3 +57,9 @@ CHECKS
 2. Pull the crystal out -> the oscillation must stop (otherwise it is running on R/C values, not the crystal).
 3. U6 [11] should also read ~2.5 V DC (625 kHz if your meter has a Hz range).
 4. Won't start? Try 330R or 1k for both R1 and R2, or 10nF for C1.
+
+UPDATE 2026-10-23: CPU clock moved to 1.25 MHz.
+  CPU pin 37 now takes U6 [12] QC (10 MHz / 8 = 1.25 MHz) instead of U6 [11] QD.
+  The R6502P is rated 1 MHz; 1.25 MHz is a mild overclock. If anything gets flaky,
+  move the wire back to QD (625 kHz): all programs still work, just 2x slower.
+  The old LED tests (blink/count/ramtest/ramsoak) run 2x faster at this clock.

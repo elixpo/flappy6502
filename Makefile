@@ -9,9 +9,9 @@ IMAGES  := $(patsubst asm/%.s,build/%.bin,$(SOURCES))
 
 all: $(IMAGES)
 
-build/%.bin: asm/%.s asm/rom.cfg
+build/%.bin: asm/%.s asm/rom.cfg $(wildcard asm/*.inc)
 	@mkdir -p build
-	$(CC65)/ca65 -o build/$*.o -l build/$*.lst $<
+	$(CC65)/ca65 -I asm -o build/$*.o -l build/$*.lst $<
 	$(CC65)/ld65 -C asm/rom.cfg -o $@ build/$*.o
 
 test: all
