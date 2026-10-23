@@ -15,10 +15,14 @@ DC        U5 pin 12 (QC)                       0 = command, 1 = data
 SCL       U5 pin 13 (QB)                       SPI clock
 CS        U5 pin 11 (QD)                       chip select, low = selected
 TE        not connected                        tearing output, not used
-RST       CPU pin 40 (/RES)                    display resets together with the CPU
+RST       +5V rail (direct)                    held high; the program sends SWRESET.
+                                               NOT to CPU /RES: the module's input load
+                                               dragged /RES to 2.3 V (display stuck in reset)
 SDA       U5 pin 14 (QA)                       SPI data (MOSI)
 
 Latch bits at $8000:  bit0 QA = SDA   bit1 QB = SCL   bit2 QC = DC   bit3 QD = CS
+
+Pull-ups: 4.7k from each of U5 pins 11-14 to +5V (raises the LS high level to ~5 V).
 
 Keep the LCD wires short-ish (under ~15 cm) and add a 100nF + 10uF across the LCD's VCC/GND
 near the module: the backlight draws ~20-60 mA.
@@ -37,14 +41,14 @@ TEST PROGRAM: build/lcdtest.bin   (source asm/lcdtest.s)
 
 Simulated (make test): exact command bytes 01 11 3A[55] 36[00] 21 13 29, then
 2A[00 00 00 EF] 2B[00 00 01 3F] 2C + 153600 zero bytes, then the 5 squares; every
-reset/sleep delay is >= 120 ms (316 ms measured).
+reset/sleep delay is >= 120 ms (263 ms measured).
 
 
 TROUBLESHOOTING
 ---------------
  Backlight off .................. EN or VCC not on +5V.
  Backlight on, never any noise .. init not received: check SDA/SCL/DC/CS go to the right
-                                  U5 pins (easy to swap SDA and SCL), and RST = CPU 40.
+                                  U5 pins (easy to swap SDA and SCL), and RST = +5V.
                                   Measure U5 QB (SCL) during the first second: it should
                                   sit between 0 and 3 V (toggling).
  Noise but no black wipe ........ pixel data not arriving; same pin checks, DC especially.

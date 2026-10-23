@@ -1,7 +1,8 @@
 ; Stage 4: ST7789P3 bring-up over bit-banged SPI through the U5 latch.
 ;
 ; Latch $8000: bit0 = SDA, bit1 = SCL, bit2 = DC (1 = data), bit3 = CS (low = selected).
-; LCD RST is tied to CPU /RES, so the display resets with the CPU.
+; LCD RST is tied to +5V (the module loads the CPU /RES line too much); the
+; init starts with a software reset (SWRESET) instead.
 ;
 ; What you should see (625 kHz CPU clock):
 ;   ~0.5 s   backlight on, screen still dark/garbage (init running)
@@ -47,10 +48,12 @@ reset:  sei
         cld
         ldx #$FF
         txs
+        lda #CS                 ; CS high: deselect, resets the panel's SPI bit counter
+        sta LATCH
+        jsr delay               ; let the panel power up / come out of reset
         lda #0                  ; CS low, SCL low; stays selected from now on
         sta dcbit
         sta LATCH
-        jsr delay               ; let the panel come out of reset
 
 ; ---- init table: cmd, (count | $80 = delay after), data... ; $FF ends ----
         ldx #0
