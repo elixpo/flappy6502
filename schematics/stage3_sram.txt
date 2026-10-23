@@ -84,4 +84,13 @@ CONTINUITY CHECK (power off)
 [ ] pin 20 does NOT beep to +5V (old tie-off removed)
 [ ] pin 1 does NOT beep to pin 26 (A14 vs A13)
 
-TEST: flash build/ramtest.bin (coming next). Slow steady blink = RAM OK.
+TEST: ./flash build/ramtest.bin   (source asm/ramtest.s, rebuild with `make`)
+Keep the 4 LEDs on U5 QA-QD (LED ON = bit 0). Press reset, then:
+  all 4 LEDs off for ~4 s ......... test running
+  running light QA>QB>QC>QD ....... PASS (RAM, address lines, stack and JSR/RTS all work)
+  QA+QB on, steady ................ FAIL: an address line (A0-A14) open, stuck or shorted
+  QB+QC on, steady ................ FAIL: zero page data
+  QC+QD on, steady ................ FAIL: main RAM data (check D0-D7, /OE, /WE)
+  QA+QD on, steady ................ FAIL: stack
+  frozen / random ................. CPU crashed (check SRAM /OE, /WE and the power rail)
+Simulated with every RAM address line stuck in turn (make test): each fault shows QA+QB.
