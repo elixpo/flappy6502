@@ -1,0 +1,103 @@
+STAGE 6 (PLAN) - HARDWARE SPI SHIFTER
+=====================================
+
+Goal: the CPU writes a whole byte to $A000 and hardware clocks the 8 bits out to the
+LCD by itself. Today every bit costs ~14-20 CPU cycles of bit-banging (~229 cycles per
+pixel); with the shifter a pixel is two 4-cycle stores (~8-14 cycles), about 16x faster.
+
+  bit-banged now:  ~7 frames/s at 1.25 MHz, boot fill ~12 s
+  with shifter:    estimate 40+ frames/s, boot fill well under 1 s (to be measured)
+
+
+HOW IT WORKS
+------------
+                 D0-D7 (data bus)
+                      │
+   write $A000 ──► /SHWR ──┬──► 74LS165 /PL  (parallel load: grabs the byte)
+                           └──► 74LS161 /CLR (bit counter back to 0)
+
+   10 MHz ──► 74LS161 CLK         counts 0..15, then stops at 15 (RCO -> /ENP)
+                QA (5 MHz) ─────────────────────────────► LCD SCL
+                QA ──|>o── 74LS165 CLK  (shifts on SCL falling edges)
+              74LS165 QH ───────────────────────────────► LCD SDA
+
+   - Counts 0..15 = 16 ticks of 10 MHz = 8 SCL rising edges = one byte (MSB first,
+     SPI mode 0: SDA changes on SCL falling, the panel samples on SCL rising).
+   - At 15 the counter's RCO goes high, an inverter pulls ENP low: it holds, SCL idles high.
+   - One byte takes 1.6 us. At 1.25 MHz the CPU can't store faster than once every
+     4 cycles = 3.2 us, so the shifter is always done before the next byte arrives.
+   - SCL is the counter output directly (no gating), so there are no runt clock pulses.
+   - DC and CS stay on the existing latch U5 (QC, QD) at $8000. U5 QA/QB are
+     disconnected from the LCD (SDA/SCL now come from the shifter).
+
+
+ADDRESS DECODING CHANGE
+-----------------------
+The I/O range $8000-$BFFF is split by A13:
+   $8000-$9FFF  latch U5 (DC, CS)        A13 = 0
+   $A000-$BFFF  shifter (write a byte)   A13 = 1
+U5 must stop loading on $A000 writes (or DC/CS would change), so its /LOAD changes from
+/IOSEL to /LATLD.
+
+   IOSEL  = NOT /IOSEL                          (inverter)
+   /A13   = NOT A13                             (inverter)
+   /LATLD = NAND(IOSEL, /A13)   -> U5 pin 9     (replaces the wire from U4 pin 6)
+   /SHSEL = NAND(IOSEL, A13)
+   SHSEL  = NOT /SHSEL                          (inverter)
+   WSTB   = NOT /WSTB                           (inverter, from U4 pin 11)
+   /SHWR  = NAND(SHSEL, WSTB)   -> 74LS165 /PL, 74LS161 /CLR
+
+
+PARTS
+-----
+  U10  74LS161   bit counter                      (you have these)
+  U12  74LS165   8-bit parallel-in / serial-out   <- needed (74HCT165 also fine)
+  U7   74LS00 or 74HCT00  3 NAND gates            (NOT plain 74HC00: its inputs need
+                                                   >= 3.5 V and NMOS/LS highs are ~3 V)
+  U11  74LS04    4 inverters                      (plus 2 spare inverters on U9 = 6 total)
+  100nF at each new chip.
+
+
+PIN-BY-PIN
+----------
+U12 74LS165                                U10 74LS161 (bit counter)
+  1  SH/LD (/PL) <- /SHWR                    1  /CLR  <- /SHWR
+  2  CLK   <- NOT QA (U10 14 via inverter)   2  CLK   <- 10 MHz (U9 pin 6)
+  3  E  <- D4   (CPU 29)                     3-6 A-D  -> GND
+  4  F  <- D5   (CPU 28)                     7  ENP   <- NOT RCO (U10 15 via inverter)
+  5  G  <- D6   (CPU 27)                     8  GND
+  6  H  <- D7   (CPU 26)  first bit out      9  /LOAD -> +5V
+  7  /QH   n/c                               10 ENT   -> +5V
+  8  GND                                     11-13 QD,QC,QB  n/c
+  9  QH    -> LCD SDA                        14 QA    -> LCD SCL, and to the 165-CLK inverter
+  10 SER   -> GND                            15 RCO   -> ENP inverter
+  11 A  <- D0   (CPU 33)                     16 VCC
+  12 B  <- D1   (CPU 32)
+  13 C  <- D2   (CPU 31)
+  14 D  <- D3   (CPU 30)
+  15 CLK INH -> GND
+  16 VCC
+
+Inverters (U11 74LS04 + U9 spares 9>8, 11>10, 13>12):
+  inv1: /IOSEL (U4 6) -> IOSEL        inv4: /WSTB (U4 11) -> WSTB
+  inv2: A13 (CPU 23)  -> /A13         inv5: U10 QA (14)   -> U12 CLK (2)
+  inv3: /SHSEL        -> SHSEL        inv6: U10 RCO (15)  -> U10 ENP (7)
+
+NANDs (U7):
+  G1: IOSEL, /A13  -> /LATLD -> U5 pin 9
+  G2: IOSEL, A13   -> /SHSEL -> inv3
+  G3: SHSEL, WSTB  -> /SHWR  -> U12 pin 1, U10 pin 1
+
+LCD rewiring:  SDA from U12 pin 9 (not U5 14), SCL from U10 pin 14 (not U5 13).
+               DC, CS stay on U5 12 / 11. Keep the 4.7k pull-ups on SDA/SCL/DC/CS.
+
+
+SOFTWARE
+--------
+asm/lcd.inc gets a HWSPI build switch: bytes go out with `sta $A000` (DC/CS via $8000),
+fills become unrolled stores, the bird becomes table lookups + stores. The bit-banged
+build stays available, so you can go back by rewiring SDA/SCL to U5 QA/QB.
+Simulator gets a model of the shifter so everything is checked before you flash.
+
+If the 10 MHz shift clock is flaky on the breadboard, clock U10 from U6 QA (5 MHz)
+instead: a byte then takes 3.2 us and the software keeps >= 6 cycles between stores.
