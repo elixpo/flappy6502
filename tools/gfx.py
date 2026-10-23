@@ -113,6 +113,9 @@ def main() -> None:
     lines += ["", "; game colour ids (offset into the 256-byte ctab)", f"NCOL = {len(game)}"]
     for i, (n, c) in enumerate(game):
         lines.append(f"ID_{n:<10} = ${i * 16:02X}    ; {c}")
+    for i, (n, c) in enumerate(game):
+        lines.append(f"CI_{n:<10} = {i:<2}     ; colour index (lcd2.inc)")
+        lines.append(f"GCOL_{i:<8} = ${rgb(c):04X}")
     lines.append("gcol_hi: .byte " + ", ".join(f"${rgb(c) >> 8:02X}" for _n, c in game))
     lines.append("gcol_lo: .byte " + ", ".join(f"${rgb(c) & 0xFF:02X}" for _n, c in game))
     lines += ["", f"; bird {size}x{size}, one byte per pixel = colour id (row-major)", "bird16:"]

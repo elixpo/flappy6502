@@ -1,91 +1,109 @@
-; Flappy Bird for the R6502 + ST7789 (landscape 320x240, bit-banged SPI).
+; Flappy Bird v2 for the R6502 + ST7789, using the auto-clock SPI (stage 7 wiring).
+; Target ~24 frames/s at 1.25 MHz.
 ;
-; Play: the game starts on reset with the bird hovering; the first flap starts it.
-; The button (NMI) flaps. Hit a pipe or the ground -> your score appears in the
-; middle; press again (after ~0.4 s) to restart.
+; Screen (landscape 320x240):
+;   x 0-19     fixed HUD strip (never scrolls): live score, 3 digits top to bottom
+;   x 20-319   scrolling world, 300 px ring: sky, pipes every 100 px, ground
 ;
-; How it stays fast enough:
-;  - The world moves with the ST7789 hardware scroll (VSCRSADD), no pixels copied.
-;    Each frame, the STEP columns that scrolled off the left edge reappear at the
-;    right edge and are redrawn as the new world columns.
-;  - Pipes repeat every 160 px = half the 320 px scroll ring, so a column that
-;    wraps around was sky before and is sky again (nothing to draw), and pipe
-;    columns always land on the same memory lines (0-29 and 160-189). A pipe
-;    column only needs the rows around the old and the new gap redrawn.
-;  - Every colour has its 16 latch values precomputed in RAM (ctab), so a pixel
-;    is 16 x (lda ctab+i,x / sta LATCH / ora #SCL / sta LATCH) = 14 cycles per bit.
+; Play: power on -> bird hovers; press = flap (the first press starts the game).
+; Crash -> big score in the middle; ~1 s later a press restarts and flaps at once.
 ;
-; If the pipes move to the RIGHT on the real screen, set SCROLL_DIR = -1.
+; Speed tricks:
+;  - world moves by the panel's hardware scroll; only the STEP columns that wrap to
+;    the right edge are drawn, and pipe columns only where old and new pipe differ
+;  - one store per SPI bit (the write to $A000 makes the clock pulse itself)
+;  - the bird (+ STEP sky columns on its left) is compiled at boot into RAM as
+;    5760 straight-line stores, ~23k cycles to draw
 
         .setcpu "6502"
         .segment "CODE"
-        .include "lcd.inc"
         .include "gfx.inc"
+        .include "lcd2.inc"
 
-; ---- tuning ----
-SCROLL_DIR = 1
-STEP     = 2                    ; scroll pixels per frame
-GROUND_Y = 200                  ; first ground row
-GAP      = 80                   ; vertical gap between pipes
+; ---- tuning (per frame; ~24 frames/s at 1.25 MHz) ----
+STEP     = 2                    ; scroll px per frame (~48 px/s)
+GAP      = 80                   ; vertical opening between the pipes
 GAP_MIN  = 24                   ; gap top = GAP_MIN + (random & 63)
-PERIOD   = 160                  ; pipe spacing; must be 320 / 2
-PIPE_W   = 30                   ; pipe width incl. caps
-BIRD_X   = 80                   ; bird screen column (left edge)
-BIRD_Y0  = 100                  ; start row
-BIRD_MAX = GROUND_Y - BIRD_H    ; lowest row before the ground
-FLAP_V   = $FB80                ; -4.5 px/frame (8.8 fixed point)
-GRAV     = $0066                ; +0.4 px/frame^2
-MAXV     = $0600                ; terminal speed 6 px/frame
-COL_WAIT = 24                   ; delay_col loops: makes a sky column cost about a pipe column
-SCORE_Y  = 60
+FLAP_V   = $F680                ; -9.5 px/frame   (8.8 fixed point) ~ -230 px/s
+GRAV     = $014D                ; +1.3 px/frame^2               ~ 750 px/s^2
+MAXV     = $0B00                ; fall speed cap 11 px/frame (must stay < 18)
+COL_WAIT = 6                    ; delay for a skipped column ~ cost of a pipe column
+
+; ---- layout ----
+TFA      = 20                   ; fixed HUD width (memory lines 0-19)
+RING     = 300                  ; scrolling lines 20-319
+PERIOD   = 100                  ; pipe spacing: RING / 3, so wrapped columns match
+NSLOT    = 3
+PIPE_W   = 30
+GROUND_Y = 200
+BIRD_X   = 80                   ; bird left edge on screen
+BIRD_Y0  = 100
+BIRD_MAX = GROUND_Y - BIRD_H
+BW2      = BIRD_W + STEP        ; drawn width: STEP sky columns + the bird
+SCORE_Y  = 60                   ; big game-over score
 NOPIPE   = $FF
 
-ctab    = $0200                 ; 16 colours x 16 latch values
+BCODE    = $0400                ; compiled bird: 360 px x 16 stores x 3 bytes + rts
+BPIX     = $4800                ; the same 20x18 picture as colour indices (slow path)
 
-; ---- zero page ($00-$2F belong to lcd.inc) ----
-flap    = $30                   ; incremented by the NMI (button)
-scr     = $32                   ; scroll position 0..319 (16-bit)
-yf      = $34                   ; bird y, 8.8: yf = fraction
-yp      = $35                   ;              yp = pixel row
-vy      = $36                   ; bird speed, 8.8 signed (16-bit)
-oy      = $38                   ; row the bird was drawn at
-cgap    = $39                   ; gap top of the pipe in slot 0 / 1 (NOPIPE = none)
-pgap    = $3B                   ; gap of the previous pipe in that slot
-rng     = $3D
-score   = $3E                   ; BCD, 2 bytes
-lx      = $40                   ; logical (memory) column, 16-bit
-phase   = $42                   ; lx mod 160
-slot    = $43                   ; lx / 160
-r0      = $44                   ; pipe column: rows r0..r1-1 are redrawn
-r1      = $45
-gt      = $46                   ; pipe column: gap top
-gp      = $47                   ; pipe column: previous gap top
-segi    = $48
-bptr    = $4A                   ; 16-bit
-ncol    = $4C
-c0      = $4D
-pp      = $4E                   ; last phase seen at the bird's left edge (scoring)
-sx      = $50                   ; screen x, 16-bit
-rw      = $52                   ; rect width
-ry0     = $53                   ; rect rows ry0..ry1
-ry1     = $54
-rcol    = $55                   ; rect colour id
-rows    = $56
-j       = $57
-part    = $58
-tz      = $59
-si      = $5A
-fidx    = $5B
-fbits   = $5C
-cellr   = $5D
-cellc   = $5E
-dx      = $5F                   ; 16-bit
-bnd     = $60                   ; 10 segment boundaries
-scol    = $6A                   ; 9 segment colours
-dig     = $73                   ; 3 score digits
+; ---- zero page ($00-$1F belong to lcd2.inc) ----
+flap    = $20                   ; incremented by the NMI (button)
+s       = $22                   ; scroll position in the ring 0..299 (16-bit)
+yf      = $24                   ; bird y 8.8: fraction
+yp      = $25                   ;             pixel row
+vy      = $26                   ; 8.8 signed, 16-bit
+oy      = $28                   ; row the bird was drawn at
+cgap    = $29                   ; 3 slots: gap top of the current pipe (NOPIPE = none)
+pgap    = $2C                   ; 3 slots: gap top of the previous pipe
+rng     = $2F
+score   = $30                   ; BCD, 2 bytes
+q       = $32                   ; ring position, 16-bit
+phase   = $34
+slot    = $35
+r0      = $36
+r1      = $37
+gt      = $38
+gp      = $39
+segi    = $3A
+rw      = $3B
+ry0     = $3C
+ry1     = $3D
+rcol    = $3E
+rows    = $3F
+j       = $40
+part    = $41
+tz      = $42
+sx      = $43                   ; screen x, 16-bit
+bptr    = $45                   ; 16-bit
+ncol    = $47
+c0      = $48
+pp      = $49
+lx      = $4A                   ; memory line, 16-bit
+dig     = $4C                   ; 3 digits
+si      = $4F
+fidx    = $50
+fbits   = $51
+cellr   = $52
+cellc   = $53
+dx      = $54                   ; 16-bit
+gc      = $56
+gh      = $57
+gl      = $58
+bp2     = $59                   ; 16-bit
+shown   = $5B                   ; 3 digits currently on the HUD
+hy      = $5E
+frow    = $5F
+bnd     = $60                   ; 10 boundaries
+scol    = $6A                   ; 9 colours
+
+.macro  set16 var, value
+        lda #<(value)
+        sta var
+        lda #>(value)
+        sta var+1
+.endmacro
 
 ; =========================================================================
-
 reset:  sei
         cld
         ldx #$FF
@@ -95,44 +113,69 @@ reset:  sei
         lda #$A5
         sta rng
         jsr lcd_init
-        jsr build_ctab
 
-        lda #$33                ; VSCRDEF: TFA 0, VSA 320, BFA 0 (whole screen scrolls)
+        lda #$33                ; VSCRDEF: TFA 20 (HUD), VSA 300, BFA 0
         jsr cmd
         lda #0
-        jsr spi_byte
+        jsr dat
+        lda #TFA
+        jsr dat
+        lda #>RING
+        jsr dat
+        lda #<RING
+        jsr dat
         lda #0
-        jsr spi_byte
-        lda #>320
-        jsr spi_byte
-        lda #<320
-        jsr spi_byte
+        jsr dat
         lda #0
-        jsr spi_byte
+        jsr dat
         lda #0
-        jsr spi_byte
-        lda #0
-        sta scr
-        sta scr+1
+        sta s
+        sta s+1
         jsr send_scroll
 
-        fill_rect 0, 0,            LCD_W, GROUND_Y, C_SKY
-        fill_rect 0, GROUND_Y,     LCD_W, 4,  C_GRASS
-        fill_rect 0, GROUND_Y + 4, LCD_W, 2,  C_GRASS_DK
-        fill_rect 0, GROUND_Y + 6, LCD_W, 34, C_DIRT
-        fill_rect 0, GROUND_Y + 20, LCD_W, 3, C_DIRT_DK
+        jsr gen_bird
+
+        lda #CI_OUTLINE         ; HUD strip
+        sta rcol
+        lda #0
+        sta ry0
+        lda #LCD_H - 1
+        sta ry1
+        set16 lx, 0
+        lda #TFA
+        sta part
+        jsr lrect
+        lda #CI_SKY             ; world: sky and ground, two halves of 150 columns
+        ldx #0
+        ldy #GROUND_Y - 1
+        jsr band
+        lda #CI_GRASS
+        ldx #GROUND_Y
+        ldy #GROUND_Y + 3
+        jsr band
+        lda #CI_GRASS_DK
+        ldx #GROUND_Y + 4
+        ldy #GROUND_Y + 5
+        jsr band
+        lda #CI_DIRT
+        ldx #GROUND_Y + 6
+        ldy #LCD_H - 1
+        jsr band
+        lda #CI_DIRT_DK
+        ldx #GROUND_Y + 20
+        ldy #GROUND_Y + 22
+        jsr band
 
 ; ---- new game: bird hovers until the first flap ----
 newgame:
         jsr setup
         lda #0
         sta flap
-@wait:  jsr rnd                 ; the press timing seeds the random gaps
+@wait:  jsr rnd                 ; press timing seeds the random gaps
         lda flap
         beq @wait
         jmp doflap
 
-; reset the bird, score and pipes, and draw the bird
 setup:  lda #BIRD_Y0
         sta yp
         sta oy
@@ -143,15 +186,18 @@ setup:  lda #BIRD_Y0
         sta score
         sta score+1
         lda #NOPIPE
-        sta cgap
-        sta cgap+1
-        sta pgap
-        sta pgap+1
-        lda #<BIRD_X
-        sta sx
-        lda #>BIRD_X
-        sta sx+1
-        jsr to_lx
+        ldx #NSLOT - 1
+:       sta cgap,x
+        sta pgap,x
+        dex
+        bpl :-
+        lda #$FF                ; force a full HUD redraw
+        sta shown
+        sta shown+1
+        sta shown+2
+        jsr hud_update
+        set16 sx, BIRD_X
+        jsr to_q
         jsr ph_of
         lda phase
         sta pp
@@ -168,25 +214,25 @@ doflap: lda #0
         sta vy+1
 noflap: jsr physics
 
-        clc                     ; scroll the world STEP pixels
-        lda scr
+        clc                     ; s = (s + STEP) mod 300
+        lda s
         adc #STEP
-        sta scr
-        lda scr+1
+        sta s
+        lda s+1
         adc #0
-        sta scr+1
+        sta s+1
         beq :+
-        lda scr
-        cmp #<320
+        lda s
+        cmp #<RING
         bcc :+
-        sbc #<320               ; carry is set
-        sta scr
+        sbc #<RING
+        sta s
         lda #0
-        sta scr+1
+        sta s+1
 :       jsr send_scroll
 
         jsr new_cols
-        jsr erase_bird
+        jsr erase_v
         jsr put_bird
         lda yp
         sta oy
@@ -196,12 +242,15 @@ noflap: jsr physics
         jsr scorechk
         jmp play
 
-; Game over: the score stays up until the button is pressed again. Presses
-; during the first ~1 s (the crash, or button bounce) are ignored. The press
-; that restarts also counts as the first flap, so play begins straight away.
+; Game over: the score stays until a press; presses in the first ~1 s are ignored.
+; The restart press also counts as the first flap.
 died:   jsr show_score
-        ldx #8                  ; 8 x ~131 ms at 1.25 MHz
-:       jsr delay
+        ldx #8
+:       txa
+        pha
+        jsr delay
+        pla
+        tax
         dex
         bne :-
         lda #0
@@ -214,7 +263,6 @@ died:   jsr show_score
         jmp doflap
 
 ; =========================================================================
-; Physics: vy += GRAV (capped), y += vy, stay between row 0 and BIRD_MAX.
 physics:
         clc
         lda vy
@@ -223,7 +271,7 @@ physics:
         lda vy+1
         adc #>GRAV
         sta vy+1
-        bmi @move               ; rising: no cap
+        bmi @move
         cmp #>MAXV
         bcc @move
         lda #<MAXV
@@ -237,7 +285,7 @@ physics:
         lda yp
         adc vy+1
         sta yp
-        cmp #$E0                ; wrapped above the top -> clamp to 0
+        cmp #$E0                ; went above the top
         bcc @low
         lda #0
         sta yp
@@ -251,25 +299,19 @@ physics:
         sta yp
 @ok:    rts
 
-; Collision: C = 1 if the bird box (BIRD_X..+17, yp..yp+17) hits a pipe or the ground.
+; C = 1 if the bird box (BIRD_X..+17, yp..yp+17) touches a pipe or the ground
 collide:
         lda yp
         cmp #BIRD_MAX
         bcs @yes
-        lda #<(BIRD_X + BIRD_W - 1)
-        sta sx
-        lda #>(BIRD_X + BIRD_W - 1)
-        sta sx+1
-        jsr to_lx
+        set16 sx, BIRD_X + BIRD_W - 1
+        jsr to_q
         jsr ph_of
         lda phase
         cmp #PIPE_W
         bcc @pipe
-        lda #<BIRD_X
-        sta sx
-        lda #>BIRD_X
-        sta sx+1
-        jsr to_lx
+        set16 sx, BIRD_X
+        jsr to_q
         jsr ph_of
         lda phase
         cmp #PIPE_W
@@ -279,10 +321,10 @@ collide:
         cmp #NOPIPE
         beq @no
         sta tz
-        lda yp                  ; top above the gap?
+        lda yp
         cmp tz
         bcc @yes
-        lda tz                  ; bottom below the gap?
+        lda tz
         clc
         adc #GAP
         sta tz
@@ -296,13 +338,10 @@ collide:
 @yes:   sec
         rts
 
-; Score +1 when a pipe's last column passes the bird's left edge.
+; +1 when a pipe's last column passes the bird's left edge; updates the HUD
 scorechk:
-        lda #<BIRD_X
-        sta sx
-        lda #>BIRD_X
-        sta sx+1
-        jsr to_lx
+        set16 sx, BIRD_X
+        jsr to_q
         jsr ph_of
         lda phase
         cmp #PIPE_W
@@ -323,27 +362,30 @@ scorechk:
         adc #0
         sta score+1
         cld
+        lda phase
+        sta pp
+        jmp hud_update
 @save:  lda phase
         sta pp
         rts
 
 ; =========================================================================
-; Draw the STEP new columns at the right edge (memory lines that just wrapped).
+; The STEP columns that just wrapped to the right edge
 new_cols:
         lda #0
         sta j
-@col:   lda #<(320 - STEP)
+@col:   lda #<(LCD_W - STEP)
         clc
         adc j
         sta sx
-        lda #>(320 - STEP)
+        lda #>(LCD_W - STEP)
         adc #0
         sta sx+1
-        jsr to_lx
+        jsr to_q
         jsr ph_of
         lda phase
         bne @notnew
-        ldx slot                ; a new pipe enters in this slot
+        ldx slot                ; a new pipe enters this slot
         lda cgap,x
         sta pgap,x
         jsr rnd
@@ -354,50 +396,42 @@ new_cols:
 @notnew:
         lda phase
         cmp #PIPE_W
-        bcs @sky
+        bcs @skip
         ldx slot
         lda cgap,x
         cmp #NOPIPE
-        beq @sky
+        beq @skip
         sta gt
         lda pgap,x
         sta gp
+        cmp gt
+        beq @skip               ; same gap as last time: column already right
         jsr pipe_col
         jmp @next
-@sky:   jsr delay_col           ; sky stays sky; just keep the frame time even
+@skip:  jsr delay_col
 @next:  inc j
         lda j
         cmp #STEP
         bne @col
         rts
 
-; Draw one pipe column at memory line lx, phase 0..29, gap top gt.
-; Only rows that can differ from the previous pipe (gap gp) are sent;
-; gp = NOPIPE means the line was sky, so the whole column is drawn.
+; Pipe column at ring position q, phase 0..29, gap gt, previous gap gp.
+; gp = NOPIPE: draw all 200 rows. Otherwise only [min-12, max) and
+; [min+GAP, max+GAP+12): above and below those, old and new are identical.
 pipe_col:
-        lda gp
-        cmp #NOPIPE
-        bne @union
+        lda q
+        clc
+        adc #TFA
+        sta x0
+        sta x1
+        lda q+1
+        adc #0
+        sta x0+1
+        sta x1+1
         lda #0
-        sta r0
-        lda #GROUND_Y
-        sta r1
-        jmp @bounds
-@union: lda gt                  ; r0 = min(gt, gp) - 12
-        cmp gp
-        bcc :+
-        lda gp
-:       sec
-        sbc #12
-        sta r0
-        lda gt                  ; r1 = max(gt, gp) + GAP + 12
-        cmp gp
-        bcs :+
-        lda gp
-:       clc
-        adc #GAP + 12
-        sta r1
-@bounds:
+        sta y0+1
+        sta y1+1
+
         lda #0                  ; body | edge | cap | edge | sky | edge | cap | edge | body
         sta bnd
         lda gt
@@ -435,49 +469,88 @@ pipe_col:
         lda cap_id,x
         sta scol+2
         sta scol+6
-        lda #ID_PIPE_EDGE
+        lda #CI_PIPE_EDGE
         sta scol+1
         sta scol+3
         sta scol+5
         sta scol+7
-        lda #ID_SKY
+        lda #CI_SKY
         sta scol+4
 
-        lda lx                  ; window: 1 column, rows r0..r1-1
-        sta x0
-        sta x1
-        lda lx+1
-        sta x0+1
-        sta x1+1
+        lda gp
+        cmp #NOPIPE
+        bne @two
+        lda #0
+        sta r0
+        lda #GROUND_Y
+        sta r1
+        jsr setrows
+        jsr window
+        jsr segs
+        jmp flush
+
+@two:   lda gt                  ; range 1: [min - 12, max)
+        cmp gp
+        bcc :+
+        lda gp
+:       sec
+        sbc #12
+        sta r0
+        lda gt
+        cmp gp
+        bcs :+
+        lda gp
+:       sta r1
+        jsr setrows
+        jsr window
+        jsr segs
+        jsr flush
+        lda gt                  ; range 2: [min + GAP, max + GAP + 12)
+        cmp gp
+        bcc :+
+        lda gp
+:       clc
+        adc #GAP
+        sta r0
+        lda gt
+        cmp gp
+        bcs :+
+        lda gp
+:       clc
+        adc #GAP + 12
+        sta r1
+        jsr setrows
+        jsr window_y
+        jsr segs
+        jmp flush
+
+setrows:
         lda r0
         sta y0
         ldx r1
         dex
         stx y1
-        lda #0
-        sta y0+1
-        sta y1+1
-        jsr window
+        rts
 
-        lda #0
+; send the 9 segments clipped to rows r0..r1-1
+segs:   lda #0
         sta segi
 @seg:   ldx segi
-        lda bnd,x               ; start = max(bnd[i], r0)
+        lda bnd,x
         cmp r0
         bcs :+
         lda r0
 :       sta tz
-        lda bnd+1,x             ; end = min(bnd[i+1], r1)
+        lda bnd+1,x
         cmp r1
         bcc :+
         lda r1
 :       sec
         sbc tz
-        bcc @next               ; end < start
-        beq @next               ; empty
-        tay
+        bcc @next
+        beq @next
+        sta cnt
         lda scol,x
-        tax
         jsr emit
 @next:  inc segi
         lda segi
@@ -485,52 +558,39 @@ pipe_col:
         bne @seg
         rts
 
-; Pipe profile by phase 0..29: colour of the body rows and of the cap rows.
 body_id:
-        .byte ID_SKY, ID_SKY, ID_PIPE_EDGE
-        .byte ID_PIPE_LT, ID_PIPE_LT, ID_PIPE_LT, ID_PIPE_LT
+        .byte CI_SKY, CI_SKY, CI_PIPE_EDGE
+        .byte CI_PIPE_LT, CI_PIPE_LT, CI_PIPE_LT, CI_PIPE_LT
         .repeat 15
-        .byte ID_PIPE
+        .byte CI_PIPE
         .endrepeat
-        .byte ID_PIPE_DK, ID_PIPE_DK, ID_PIPE_DK, ID_PIPE_DK, ID_PIPE_DK
-        .byte ID_PIPE_EDGE, ID_SKY, ID_SKY
+        .byte CI_PIPE_DK, CI_PIPE_DK, CI_PIPE_DK, CI_PIPE_DK, CI_PIPE_DK
+        .byte CI_PIPE_EDGE, CI_SKY, CI_SKY
 cap_id:
-        .byte ID_PIPE_EDGE
-        .byte ID_PIPE_LT, ID_PIPE_LT, ID_PIPE_LT, ID_PIPE_LT
+        .byte CI_PIPE_EDGE
+        .byte CI_PIPE_LT, CI_PIPE_LT, CI_PIPE_LT, CI_PIPE_LT
         .repeat 18
-        .byte ID_PIPE
+        .byte CI_PIPE
         .endrepeat
-        .byte ID_PIPE_DK, ID_PIPE_DK, ID_PIPE_DK, ID_PIPE_DK, ID_PIPE_DK, ID_PIPE_DK
-        .byte ID_PIPE_EDGE
+        .byte CI_PIPE_DK, CI_PIPE_DK, CI_PIPE_DK, CI_PIPE_DK, CI_PIPE_DK, CI_PIPE_DK
+        .byte CI_PIPE_EDGE
 
 ; =========================================================================
-; Bird: erase what the scroll and the vertical move left behind, then redraw.
-erase_bird:
-        lda #ID_SKY
-        sta rcol
-        lda #<(BIRD_X - STEP)   ; strip the scroll uncovered on the left
-        sta sx
-        lda #>(BIRD_X - STEP)
-        sta sx+1
-        lda #STEP
-        sta rw
-        lda oy
-        sta ry0
-        clc
-        adc #BIRD_H - 1
-        sta ry1
-        jsr srect
+; Bird
+
+; old rows the bird left when it moved up or down (cols BIRD_X-STEP .. +17)
+erase_v:
         lda yp
         cmp oy
         beq @done
         bcc @up
-        lda oy                  ; moved down: old top rows oy..yp-1
+        lda oy
         sta ry0
         ldx yp
         dex
         stx ry1
         jmp @do
-@up:    lda yp                  ; moved up: old bottom rows yp+18..oy+17
+@up:    lda yp
         clc
         adc #BIRD_H
         sta ry0
@@ -538,44 +598,77 @@ erase_bird:
         clc
         adc #BIRD_H - 1
         sta ry1
-@do:    lda #<BIRD_X
-        sta sx
-        lda #>BIRD_X
-        sta sx+1
-        lda #BIRD_W - STEP
+@do:    set16 sx, BIRD_X - STEP
+        lda #BIRD_W
         sta rw
+        lda #CI_SKY
+        sta rcol
         jmp srect
 @done:  rts
 
-; Draw the bird at screen column BIRD_X, row yp; split if it wraps past line 319.
+; draw STEP sky columns + the bird at screen BIRD_X-STEP, row yp
 put_bird:
-        lda #<BIRD_X
-        sta sx
-        lda #>BIRD_X
-        sta sx+1
-        jsr to_lx
+        set16 sx, BIRD_X - STEP
+        jsr to_q
+        lda q                   ; fits before the end of the ring? q + BW2 <= RING
+        clc
+        adc #BW2
+        sta tz
+        lda q+1
+        adc #0
+        cmp #>RING
+        bcc @fast
+        bne @split
+        lda tz
+        cmp #<RING + 1
+        bcs @split
+@fast:  lda q
+        clc
+        adc #TFA
+        sta x0
+        lda q+1
+        adc #0
+        sta x0+1
+        lda x0
+        clc
+        adc #BW2 - 1
+        sta x1
+        lda x0+1
+        adc #0
+        sta x1+1
+        jsr birdrows
+        jsr window
+        ldx #DC
+        ldy #DC | SDA
+        jsr BCODE
+        jmp flush
+@split: lda #<RING              ; k = RING - q columns before the wrap
+        sec
+        sbc q
+        sta part
+        lda q
+        clc
+        adc #TFA
+        sta lx
+        lda q+1
+        adc #0
+        sta lx+1
         lda #0
         sta c0
-        jsr room
-        bcs @whole
-        sta ncol                ; part 1: lx .. 319
-        jsr bird_part
-        lda ncol
+        lda part
+        sta ncol
+        jsr slow_part
+        set16 lx, TFA
+        lda part
         sta c0
-        lda #BIRD_W
+        lda #BW2
         sec
-        sbc ncol
+        sbc part
         sta ncol
-        lda #0                  ; part 2: 0 ..
-        sta lx
-        sta lx+1
-        jmp bird_part
-@whole: lda #BIRD_W
-        sta ncol
-        jmp bird_part
+        ; fall through
 
-; columns c0..c0+ncol-1 of the sprite at memory line lx
-bird_part:
+; columns c0..c0+ncol-1 of BPIX at memory line lx (pixel by pixel)
+slow_part:
         lda lx
         sta x0
         clc
@@ -585,10 +678,43 @@ bird_part:
         sta x0+1
         adc #0
         sta x1+1
-        lda x1                  ; x1 = x0 + ncol - 1
+        lda x1
         bne :+
         dec x1+1
 :       dec x1
+        jsr birdrows
+        jsr window
+        lda #<BPIX
+        clc
+        adc c0
+        sta bptr
+        lda #>BPIX
+        adc #0
+        sta bptr+1
+        lda #BIRD_H
+        sta rows
+@r:     lda #0
+        sta gc
+@c:     ldy gc
+        lda (bptr),y
+        ldx #1
+        stx cnt
+        jsr emit
+        inc gc
+        lda gc
+        cmp ncol
+        bne @c
+        lda bptr
+        clc
+        adc #BW2
+        sta bptr
+        bcc :+
+        inc bptr+1
+:       dec rows
+        bne @r
+        jmp flush
+
+birdrows:
         lda yp
         sta y0
         clc
@@ -597,28 +723,58 @@ bird_part:
         lda #0
         sta y0+1
         sta y1+1
-        jsr window
-        lda #<bird16
-        clc
-        adc c0
-        sta bptr
-        lda #>bird16
-        adc #0
-        sta bptr+1
+        rts
+
+; Compile the bird into RAM: for every pixel of the BW2 x 18 picture
+; (STEP sky columns, then the sprite), 16 x "stx SPI" (0 bit) / "sty SPI" (1 bit).
+gen_bird:
+        set16 cp, BCODE
+        set16 bp2, BPIX
+        set16 bptr, bird16
         lda #BIRD_H
         sta rows
-@row:   ldy #0
-@px:    lda (bptr),y
-        tax
-        .repeat 16, i
-        lda ctab+i,x
-        sta LATCH
-        ora #SCL
-        sta LATCH
-        .endrepeat
-        iny
-        cpy ncol
-        jne @px
+@row:   lda #0
+        sta gc
+@col:   lda gc
+        cmp #STEP
+        bcs @spr
+        lda #CI_SKY
+        jmp @have
+@spr:   sec
+        sbc #STEP
+        tay
+        lda (bptr),y            ; colour id * 16
+        lsr
+        lsr
+        lsr
+        lsr
+@have:  ldy #0
+        sta (bp2),y
+        inc bp2
+        bne :+
+        inc bp2+1
+:       tax
+        lda gcol_hi,x
+        sta gh
+        lda gcol_lo,x
+        sta gl
+        ldx #16
+@bit:   asl gl
+        rol gh                  ; C = next bit, MSB first
+        lda #$8E                ; stx abs
+        bcc :+
+        lda #$8C                ; sty abs
+:       jsr put
+        lda #<SPI
+        jsr put
+        lda #>SPI
+        jsr put
+        dex
+        bne @bit
+        inc gc
+        lda gc
+        cmp #BW2
+        bne @col
         lda bptr
         clc
         adc #BIRD_W
@@ -626,13 +782,40 @@ bird_part:
         bcc :+
         inc bptr+1
 :       dec rows
-        jne @row
-        rts
+        bne @row
+        lda #$60                ; rts
+        ; fall through
+put:    ldy #0
+        sta (cp),y
+        inc cp
+        bne :+
+        inc cp+1
+:       rts
 
 ; =========================================================================
-; Score (game over): up to 3 big digits, 3x5 cells of 6 px, centred.
-show_score:
-        lda score+1
+; HUD: 3 digits stacked in the fixed strip (x 4-15), blank leading zeros.
+hud_update:
+        jsr digits
+        ldx #0
+@d:     lda dig,x
+        cmp shown,x
+        beq @same
+        sta shown,x
+        stx si
+        lda hud_y,x
+        sta hy
+        lda dig,x
+        jsr hud_digit
+        ldx si
+@same:  inx
+        cpx #3
+        bne @d
+        rts
+
+hud_y:  .byte 8, 34, 60
+
+; dig[0..2] = hundreds, tens, ones; leading zeros -> 10 (blank)
+digits: lda score+1
         and #$0F
         sta dig
         lda score
@@ -644,11 +827,73 @@ show_score:
         lda score
         and #$0F
         sta dig+2
-        ldx #0                  ; skip leading zeros (keep at least one digit)
         lda dig
+        bne @done
+        lda #10
+        sta dig
+        lda dig+1
+        bne @done
+        lda #10
+        sta dig+1
+@done:  rts
+
+; A = digit (10 = blank), drawn at x 4..15, rows hy..hy+19 (4x4 px cells)
+hud_digit:
+        sta tz
+        asl
+        asl
+        clc
+        adc tz
+        sta fidx
+        set16 x0, 4
+        set16 x1, 15
+        lda hy
+        sta y0
+        clc
+        adc #19
+        sta y1
+        lda #0
+        sta y0+1
+        sta y1+1
+        jsr window
+        lda #5
+        sta cellr
+@fr:    lda #4
+        sta frow
+@row:   ldx fidx
+        lda font,x
+        sta fbits
+        lda #3
+        sta cellc
+@cell:  lda #4
+        sta cnt
+        lda fbits
+        and #4
+        beq :+
+        lda #CI_SCORE
+        bne :++
+:       lda #CI_OUTLINE
+:       jsr emit
+        asl fbits
+        dec cellc
+        bne @cell
+        dec frow
+        bne @row
+        inc fidx
+        dec cellr
+        bne @fr
+        jmp flush
+
+; Game over: up to 3 big digits (6 px cells) in the middle of the world
+show_score:
+        jsr digits
+        ldx #0
+        lda dig
+        cmp #10
         bne @go
         inx
         lda dig+1
+        cmp #10
         bne @go
         inx
 @go:    stx si
@@ -658,7 +903,7 @@ show_score:
         sta dx+1
 @dig:   ldx si
         lda dig,x
-        jsr draw_digit
+        jsr big_digit
         lda dx
         clc
         adc #24
@@ -669,16 +914,16 @@ show_score:
         bne @dig
         rts
 
-xs_tab: .byte 127, 139, 151     ; x of the first digit for 3, 2, 1 digits
+xs_tab: .byte 127, 139, 151
 
-draw_digit:
-        sta tz                  ; font index = digit * 5
+big_digit:
+        sta tz
         asl
         asl
         clc
         adc tz
         sta fidx
-        lda #ID_SCORE
+        lda #CI_SCORE
         sta rcol
         lda #6
         sta rw
@@ -724,10 +969,11 @@ draw_digit:
 mul6:   .byte 0, 6, 12, 18, 24
 font:   .byte 7,5,5,5,7, 2,6,2,2,7, 7,1,7,4,7, 7,1,7,1,7, 5,5,7,1,1
         .byte 7,4,7,1,7, 7,4,7,5,7, 7,1,1,1,1, 7,5,7,5,7, 7,5,7,1,7
+        .byte 0,0,0,0,0         ; 10 = blank
 
-; After game over: pipes (memory lines 0-29, 160-189), the score and the bird -> sky.
+; After game over: pipes (3 slots of 30 lines), the big score and the bird -> sky
 cleanup:
-        lda #ID_SKY
+        lda #CI_SKY
         sta rcol
         lda #0
         sta ry0
@@ -735,17 +981,13 @@ cleanup:
         sta ry1
         lda #PIPE_W
         sta part
-        lda #0
-        sta lx
-        sta lx+1
+        set16 lx, TFA
         jsr lrect
-        lda #PERIOD
-        sta lx
+        set16 lx, TFA + PERIOD
         jsr lrect
-        lda #127
-        sta sx
-        lda #0
-        sta sx+1
+        set16 lx, TFA + 2 * PERIOD
+        jsr lrect
+        set16 sx, 127
         lda #66
         sta rw
         lda #SCORE_Y
@@ -753,11 +995,8 @@ cleanup:
         lda #SCORE_Y + 29
         sta ry1
         jsr srect
-        lda #<BIRD_X
-        sta sx
-        lda #>BIRD_X
-        sta sx+1
-        lda #BIRD_W
+        set16 sx, BIRD_X - STEP
+        lda #BW2
         sta rw
         lda yp
         sta ry0
@@ -769,96 +1008,94 @@ cleanup:
 ; =========================================================================
 ; Helpers
 
-; lx = (scr + sx) mod 320
-to_lx:  clc
-        lda scr
-        adc sx
-        sta lx
-        lda scr+1
-        adc sx+1
-        sta lx+1
-        beq @ok
-        cmp #2
-        bcs @sub
-        lda lx
-        cmp #<320
-        bcc @ok
-@sub:   lda lx
+; q = (sx - TFA + s) mod 300, for a screen x in the scrolling part
+to_q:   lda sx
         sec
-        sbc #<320
-        sta lx
-        lda lx+1
-        sbc #>320
-        sta lx+1
+        sbc #TFA
+        sta q
+        lda sx+1
+        sbc #0
+        sta q+1
+        clc
+        lda q
+        adc s
+        sta q
+        lda q+1
+        adc s+1
+        sta q+1
+        cmp #>RING
+        bcc @ok
+        bne @sub
+        lda q
+        cmp #<RING
+        bcc @ok
+@sub:   lda q
+        sec
+        sbc #<RING
+        sta q
+        lda q+1
+        sbc #>RING
+        sta q+1
 @ok:    rts
 
-; slot = lx / 160, phase = lx mod 160
-ph_of:  lda lx+1
-        bne @high
-        lda lx
+; slot = q / 100, phase = q mod 100
+ph_of:  lda q
+        sta phase
+        lda q+1
+        sta tz
+        ldx #0
+@l:     lda tz
+        bne @sub
+        lda phase
         cmp #PERIOD
-        bcs @s1
-        sta phase
-        lda #0
-        sta slot
-        rts
-@s1:    sbc #PERIOD             ; carry set
-        sta phase
-        lda #1
-        sta slot
-        rts
-@high:  lda lx                  ; 256..319 -> phase = lx - 160 = low + 96
-        clc
-        adc #256 - PERIOD
-        sta phase
-        lda #1
-        sta slot
-        rts
-
-; A = 320 - lx if that is < BIRD_W... general: C = 1 if a width of BIRD_W fits
-; before line 320, else C = 0 and A = columns left before the wrap.
-room:   lda #<320
+        bcc @done
+@sub:   lda phase
         sec
-        sbc lx
-        sta tz
-        lda #>320
-        sbc lx+1
-        bne @fits               ; >= 256 columns left
+        sbc #PERIOD
+        sta phase
         lda tz
-        cmp #BIRD_W
-        bcs @fits
-        clc
-        rts
-@fits:  sec
+        sbc #0
+        sta tz
+        inx
+        jmp @l
+@done:  stx slot
         rts
 
-; Fill a screen rectangle: x sx..sx+rw-1 (wraps), rows ry0..ry1, colour rcol.
-srect:  jsr to_lx
-        lda #<320
+; fill a screen rect: x sx..sx+rw-1 (scrolling part, wraps), rows ry0..ry1, colour rcol
+srect:  jsr to_q
+        lda #<RING
         sec
-        sbc lx
+        sbc q
         sta tz
-        lda #>320
-        sbc lx+1
+        lda #>RING
+        sbc q+1
         bne @one
         lda tz
         cmp rw
         bcs @one
-        sta part                ; part up to line 319, then the rest from 0
-        jsr lrect
+        sta part
+        jsr q_lrect
         lda #0
-        sta lx
-        sta lx+1
+        sta q
+        sta q+1
         lda rw
         sec
         sbc part
         sta part
-        jmp lrect
+        jmp q_lrect
 @one:   lda rw
         sta part
+q_lrect:
+        lda q
+        clc
+        adc #TFA
+        sta lx
+        lda q+1
+        adc #0
+        sta lx+1
         ; fall through
 
-; Fill memory lines lx..lx+part-1, rows ry0..ry1 with rcol.
+; fill memory lines lx..lx+part-1, rows ry0..ry1 with colour rcol
 lrect:  lda lx
         sta x0
         clc
@@ -885,77 +1122,39 @@ lrect:  lda lx
         sbc ry0
         sta rows
         inc rows
-@r:     ldx rcol
-        ldy part
+@r:     lda part
+        sta cnt
+        lda rcol
         jsr emit
         dec rows
         bne @r
-        rts
+        jmp flush
 
-; Send Y pixels of colour X (a ctab offset). ~229 cycles per pixel.
-emit:
-@p:     .repeat 16, i
-        lda ctab+i,x
-        sta LATCH
-        ora #SCL
-        sta LATCH
-        .endrepeat
-        dey
-        jne @p
-        rts
+; A = colour, X..Y = rows: fill that band across the whole world (2 x 150 lines)
+band:   sta rcol
+        stx ry0
+        sty ry1
+        lda #150
+        sta part
+        set16 lx, TFA
+        jsr lrect
+        set16 lx, TFA + 150
+        jmp lrect
 
-; ctab[id*16 + bit] = latch value for bit 15-bit of colour id (data mode, CS low)
-build_ctab:
-        ldy #0
-        ldx #0
-@c:     lda gcol_hi,y
-        sta tmp
-        lda gcol_lo,y
-        sta tmp2
-        lda #16
-        sta tz
-@b:     asl tmp2
-        rol tmp
-        lda #DC
-        adc #0
-        sta ctab,x
-        inx
-        dec tz
-        bne @b
-        iny
-        cpy #NCOL
-        bne @c
-        rts
-
-; VSCRSADD = scr (or 320 - scr when the panel scrolls the other way)
+; VSCRSADD = TFA + s
 send_scroll:
         lda #$37
         jsr cmd
-.if SCROLL_DIR > 0
-        lda scr+1
-        jsr spi_byte
-        lda scr
-        jmp spi_byte
-.else
-        lda scr
-        ora scr+1
-        bne :+
-        lda #0
-        jsr spi_byte
-        lda #0
-        jmp spi_byte
-:       lda #<320
-        sec
-        sbc scr
+        lda s
+        clc
+        adc #TFA
         sta tz
-        lda #>320
-        sbc scr+1
-        jsr spi_byte
+        lda s+1
+        adc #0
+        jsr dat
         lda tz
-        jmp spi_byte
-.endif
+        jmp dat
 
-; 8-bit LFSR
 rnd:    lda rng
         asl
         bcc :+
@@ -963,7 +1162,7 @@ rnd:    lda rng
 :       sta rng
         rts
 
-; About the time one pipe column takes, so frames run at an even speed.
+; about the cost of one pipe column, so frames stay evenly timed
 delay_col:
         ldy #COL_WAIT
         ldx #0
