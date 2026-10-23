@@ -57,6 +57,11 @@ PARTS
   U11  74LS04    4 inverters                      (plus 2 spare inverters on U9 = 6 total)
   100nF at each new chip.
 
+  On hand (2026-10-23): 74LS00, 74LS04, 74LS161. Not usable: 74LS595 (serial-in,
+  parallel-out = the wrong direction, it cannot load a byte from the bus).
+  To buy: 74HCT165 or 74LS165. A plain 74HC165 also works if D0-D7 get 4.7k pull-ups
+  to +5V (lifts the NMOS ~3 V highs above the HC 3.5 V threshold).
+
 
 PIN-BY-PIN
 ----------
