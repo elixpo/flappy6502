@@ -102,6 +102,22 @@ def main() -> None:
         b = packed[r * per_row:(r + 1) * per_row]
         lines.append("        .byte " + ", ".join(f"${x:02X}" for x in b)
                      + "    ; " + "".join(keys[i] for i in row))
+    # Game colour table: up to 16 colours, each gets a 16-byte latch table in RAM
+    # (ctab), so a colour id is id*16 = its offset there. Bird palette first, so
+    # bird16 can store the offsets directly.
+    game = [(n, c) for n, c in PALETTE.values()] + [
+        (n.removeprefix("C_"), SCENE[n]) for n in
+        ("C_PIPE_EDGE", "C_PIPE_LT", "C_PIPE", "C_PIPE_DK",
+         "C_GRASS", "C_GRASS_DK", "C_DIRT", "C_DIRT_DK")] + [("SCORE", SCENE["C_WHITE"])]
+    assert len(game) <= 16 and len({n for n, _c in game}) == len(game), "colour names must be unique"
+    lines += ["", "; game colour ids (offset into the 256-byte ctab)", f"NCOL = {len(game)}"]
+    for i, (n, c) in enumerate(game):
+        lines.append(f"ID_{n:<10} = ${i * 16:02X}    ; {c}")
+    lines.append("gcol_hi: .byte " + ", ".join(f"${rgb(c) >> 8:02X}" for _n, c in game))
+    lines.append("gcol_lo: .byte " + ", ".join(f"${rgb(c) & 0xFF:02X}" for _n, c in game))
+    lines += ["", f"; bird {size}x{size}, one byte per pixel = colour id (row-major)", "bird16:"]
+    for row in idx:
+        lines.append("        .byte " + ", ".join(f"${i * 16:02X}" for i in row))
     (ROOT / "asm" / "gfx.inc").write_text("\n".join(lines) + "\n")
 
     write_png(ROOT / "build" / "bird.png", [[colours[i] for i in row] for row in idx], scale=10)
