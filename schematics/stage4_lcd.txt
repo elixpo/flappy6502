@@ -1,0 +1,54 @@
+STAGE 4 - LCD  (SmartElex 2" IPS, LHS200KP-IF05, ST7789P3, 240x320, 4-wire SPI)
+=================================================================================
+
+Datasheet: SmartElex-2-inch-IPS-TFT-LCD-module.pdf. Its reference wiring runs the module
+straight off an Arduino Uno's 5 V and 5 V logic pins, so it connects directly to the latch.
+
+First REMOVE the 4 test LEDs (and their resistors) from U5 QA-QD.
+
+LCD pin   Connects to                          Function
+-------   ----------------------------------   ------------------------------------------
+VCC       +5V rail                             module power (on-board regulator)
+GND       GND rail
+EN        +5V rail                             backlight enable (always on)
+DC        U5 pin 12 (QC)                       0 = command, 1 = data
+SCL       U5 pin 13 (QB)                       SPI clock
+CS        U5 pin 11 (QD)                       chip select, low = selected
+TE        not connected                        tearing output, not used
+RST       CPU pin 40 (/RES)                    display resets together with the CPU
+SDA       U5 pin 14 (QA)                       SPI data (MOSI)
+
+Latch bits at $8000:  bit0 QA = SDA   bit1 QB = SCL   bit2 QC = DC   bit3 QD = CS
+
+Keep the LCD wires short-ish (under ~15 cm) and add a 100nF + 10uF across the LCD's VCC/GND
+near the module: the backlight draws ~20-60 mA.
+
+
+TEST PROGRAM: build/lcdtest.bin   (source asm/lcdtest.s)
+--------------------------------------------------------
+./flash build/lcdtest.bin, put the EEPROM back, power on, press reset. At 625 kHz:
+
+  0 - ~1 s    backlight on; init commands are being sent
+  ~1 s        screen shows random noise  -> the display is on, init WORKED
+  ~1 - 18 s   black wipes down the screen from the top  -> pixel writes work
+  ~18 - 24 s  five 48x48 squares in the middle, left to right:
+              RED  GREEN  BLUE  WHITE  YELLOW
+  then        CPU halts, the picture stays
+
+Simulated (make test): exact command bytes 01 11 3A[55] 36[00] 21 13 29, then
+2A[00 00 00 EF] 2B[00 00 01 3F] 2C + 153600 zero bytes, then the 5 squares; every
+reset/sleep delay is >= 120 ms (316 ms measured).
+
+
+TROUBLESHOOTING
+---------------
+ Backlight off .................. EN or VCC not on +5V.
+ Backlight on, never any noise .. init not received: check SDA/SCL/DC/CS go to the right
+                                  U5 pins (easy to swap SDA and SCL), and RST = CPU 40.
+                                  Measure U5 QB (SCL) during the first second: it should
+                                  sit between 0 and 3 V (toggling).
+ Noise but no black wipe ........ pixel data not arriving; same pin checks, DC especially.
+ Colours wrong:
+   black/white swapped, all colours inverted -> in asm/lcdtest.s change $21 (INVON) to $20.
+   red and blue swapped                       -> change MADCTL data $00 to $08.
+ Squares in the wrong place / sideways ....... note what you see; it's MADCTL orientation.
