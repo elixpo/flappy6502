@@ -56,3 +56,9 @@ TROUBLESHOOTING
    black/white swapped, all colours inverted -> in asm/lcdtest.s change $21 (INVON) to $20.
    red and blue swapped                       -> change MADCTL data $00 to $08.
  Squares in the wrong place / sideways ....... note what you see; it's MADCTL orientation.
+
+
+RESULT 2026-10-23: PASSED (lcdtest.bin, CRC 69F0). Noise -> black wipe -> five squares.
+  The display really works on the R6502 through the 74LS161 latch with bit-banged SPI.
+  The final fault was loose breadboard contacts (again). The latch outputs have 4.7k pull-ups;
+  LCD RST is on +5V with SWRESET in software.
