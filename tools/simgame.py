@@ -176,25 +176,37 @@ def main() -> int:
                    f"score {sc}, {fps:.1f} frames/s at 1.25 MHz ({fps / 2:.1f} at 625 kHz), "
                    f"scroll {fps * 2:.0f} px/s -> build/game_2_playing.png, game_3_later.png"))
 
-    # 3. no more presses: the bird falls, game over shows the score
-    g.run_until(g.t + 8)
+    # 3. no more presses: the bird falls, game over shows the score and STAYS
+    def score_px(scr):
+        return sum(1 for y in range(60, 90) for x in range(127, 193) if scr[y][x] == 0xFFFF)
+
+    t = g.t
+    while g.lcd.screen and g.t < t + 15 and score_px(g.lcd.screen()) == 0:
+        g.run_until(g.t + 1)
+    died_t = g.t
+    g.run_until(died_t + 0.3)
+    g.press()                                   # inside the ~1 s hold-off: ignored
+    frames = len(g.lcd.scrolls)
+    g.run_until(died_t + 10)
     g.snap("4_gameover")
     s = g.lcd.screen()
-    white = sum(1 for y in range(60, 90) for x in range(127, 193) if s[y][x] == 0xFFFF)
-    r.append(check("game over shows the score", white > 100 and g.ram("yp") >= 170,
-                   f"{white} score pixels, bird row {g.ram('yp')} -> build/game_4_gameover.png"))
+    r.append(check("game over waits for a press (early press ignored)",
+                   score_px(s) > 100 and len(g.lcd.scrolls) == frames,
+                   f"{score_px(s)} score pixels still shown after 10 s, "
+                   f"{len(g.lcd.scrolls) - frames} frames -> build/game_4_gameover.png"))
 
-    # 4. press again: clean restart
+    # 4. one press: clean restart AND play starts straight away (no second press)
     g.press()
-    g.run_until(g.t + 6)
+    frames = len(g.lcd.scrolls)
+    g.run_until(g.t + 5)
     g.snap("5_restart")
     s = g.lcd.screen()
-    pipe_px = sum(1 for y in range(200) for x in range(320) if s[y][x] in (0x75E5, 0x9F2B, 0x5404))
-    white = sum(1 for y in range(60, 90) for x in range(127, 193) if s[y][x] == 0xFFFF)
-    r.append(check("restart clears pipes and score", pipe_px == 0 and white == 0
-                   and len(g.lcd.scrolls) == len(g.lcd.scrolls) and g.ram("yp") == 100,
-                   f"pipe px {pipe_px}, score px {white}, bird row {g.ram('yp')} "
-                   f"-> build/game_5_restart.png"))
+    pipe_px = sum(1 for y in range(200) for x in range(250)
+                  if s[y][x] in (0x75E5, 0x9F2B, 0x5404))
+    played = len(g.lcd.scrolls) - frames
+    r.append(check("one press restarts and plays", pipe_px == 0 and score_px(s) == 0 and played > 5,
+                   f"old pipes left {pipe_px} px, score px {score_px(s)}, "
+                   f"{played} frames played without a 2nd press -> build/game_5_restart.png"))
 
     print(f"{sum(r)}/{len(r)} game checks passed")
     return 0 if all(r) else 1

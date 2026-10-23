@@ -124,7 +124,16 @@ reset:  sei
 
 ; ---- new game: bird hovers until the first flap ----
 newgame:
-        lda #BIRD_Y0
+        jsr setup
+        lda #0
+        sta flap
+@wait:  jsr rnd                 ; the press timing seeds the random gaps
+        lda flap
+        beq @wait
+        jmp doflap
+
+; reset the bird, score and pipes, and draw the bird
+setup:  lda #BIRD_Y0
         sta yp
         sta oy
         lda #0
@@ -146,13 +155,7 @@ newgame:
         jsr ph_of
         lda phase
         sta pp
-        jsr put_bird
-        lda #0
-        sta flap
-@wait:  jsr rnd                 ; the press timing seeds the random gaps
-        lda flap
-        beq @wait
-        jmp doflap
+        jmp put_bird
 
 ; ---- one frame ----
 play:   lda flap
@@ -193,17 +196,22 @@ noflap: jsr physics
         jsr scorechk
         jmp play
 
+; Game over: the score stays up until the button is pressed again. Presses
+; during the first ~1 s (the crash, or button bounce) are ignored. The press
+; that restarts also counts as the first flap, so play begins straight away.
 died:   jsr show_score
-        jsr delay
-        jsr delay
-        jsr delay
+        ldx #8                  ; 8 x ~131 ms at 1.25 MHz
+:       jsr delay
+        dex
+        bne :-
         lda #0
         sta flap
 @wait:  jsr rnd
         lda flap
         beq @wait
         jsr cleanup
-        jmp newgame
+        jsr setup
+        jmp doflap
 
 ; =========================================================================
 ; Physics: vy += GRAV (capped), y += vy, stay between row 0 and BIRD_MAX.
