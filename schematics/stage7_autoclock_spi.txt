@@ -13,45 +13,40 @@ one 4-cycle store = clock out one bit and set up the next. Pixels go ~3x faster.
    SCL = IOSEL AND A13 AND write-strobe   (high only during phi2 of a write to $A000)
 
 
-NEW CHIPS
----------
-  U13  74LS00   2 NAND gates used
-  U14  74LS04   4 inverters used
-  100nF across VCC/GND of each.
+ONE NEW CHIP: U13 74LS00 (4 NANDs, two used as inverters) + 2 spare inverters on U9
+---------------------------------------------------------------------------------
+U9 (the oscillator 74LS04) has 3 spare inverters whose inputs were tied to GND:
+  U9 pin 9  : REMOVE from GND -> U4 pin 6  (/IOSEL)     U9 pin 8  = IOSEL
+  U9 pin 11 : REMOVE from GND -> U4 pin 11 (/WSTB)      U9 pin 10 = WSTB
+  U9 pin 13 : stays on GND
 
-U14 74LS04 (inverters)                     U13 74LS00 (NAND)
-  1  in  <- U4 pin 6  (/IOSEL)               1  in  <- U14 pin 2  (IOSEL)
-  2  out -> U13 pin 1 (IOSEL)                2  in  <- CPU pin 23 (A13)
-  3  in  <- U13 pin 3 (/SPISEL)              3  out -> U14 pin 3  (/SPISEL)
-  4  out -> U13 pin 4 (SPISEL)               4  in  <- U14 pin 4  (SPISEL)
-  5  in  <- U4 pin 11 (/WSTB)                5  in  <- U14 pin 6  (WSTB)
-  6  out -> U13 pin 5 (WSTB)                 6  out -> U14 pin 9  (/SCLK)
-  7  GND                                     7  GND
-  8  out -> LCD SCL   (the new SCL!)         8  out  n/c
-  9  in  <- U13 pin 6 (/SCLK)                9  in  -> GND
-  10 out  n/c                                10 in  -> GND
-  11 in  -> GND                              11 out  n/c
-  12 out  n/c                                12 in  -> GND
-  13 in  -> GND                              13 in  -> GND
-  14 +5V                                     14 +5V
+U13 74LS00   (+5V pin 14, GND pin 7, 100nF across)
+  G1  1 <- U9 pin 8 (IOSEL)    2 <- CPU pin 23 (A13)   3 = /SPISEL -> U13 4 and 5
+  G2  4,5 <- U13 pin 3                                 6 = SPISEL  -> U13 9
+  G3  9 <- U13 pin 6           10 <- U9 pin 10 (WSTB)  8 = /SCLK   -> U13 12 and 13
+  G4  12,13 <- U13 pin 8                               11 = SCL    -> LCD SCL
+
+  /IOSEL -[U9 9>8]-+
+                   G1 -- G2 --+
+  A13 -------------+          G3 -- G4 --> LCD SCL
+  /WSTB -[U9 11>10]-----------+
 
 LCD rewiring
-  SCL : REMOVE the wire from U5 pin 13 (QB). Connect LCD SCL to U14 pin 8.
+  SCL : REMOVE the wire from U5 pin 13 (QB). Connect LCD SCL to U13 pin 11.
         Keep the 4.7k pull-up on the SCL line.
   SDA : U5 pin 14 (QA)  - unchanged
   DC  : U5 pin 12 (QC)  - unchanged
   CS  : U5 pin 11 (QD)  - unchanged
-  U5 pin 13 (QB) is now unused (leave it unconnected).
 
 Nothing else changes: U5 still loads on every write to $8000-$BFFF (/LOAD = U4 pin 6,
 CLK = U4 pin 11). A13 (CPU 23) already goes to SRAM pin 26; this is one more wire on it
 (use a hub strip if the CPU pin is full).
 
-CHECK (power off): U14 pin 2 beeps U13 pin 1; U13 pin 3 - U14 pin 3; U14 pin 4 - U13 pin 4;
-U14 pin 6 - U13 pin 5; U13 pin 6 - U14 pin 9; U14 pin 8 - LCD SCL; U14 pin 1 - U4 pin 6;
-U14 pin 5 - U4 pin 11; U13 pin 2 - CPU 23. LCD SCL must NOT beep U5 pin 13.
+CHECK (power off): U9 9 - U4 6; U9 11 - U4 11; U9 8 - U13 1; U13 2 - CPU 23;
+U13 3 - U13 4 - U13 5; U13 6 - U13 9; U9 10 - U13 10; U13 8 - U13 12 - U13 13;
+U13 11 - LCD SCL. U9 9 and U9 11 must NOT beep GND. LCD SCL must NOT beep U5 pin 13.
 
-Idle state: SCL sits LOW (U14 pin 8 ~0 V) except during writes to $A000.
+Idle state: SCL sits LOW (U13 pin 11 ~0 V) except during writes to $A000.
 
 PROGRAMS
   flappy.bin       v2 (needs THIS wiring)  ~24 fps target at 1.25 MHz, live score

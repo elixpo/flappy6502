@@ -45,30 +45,30 @@ lcd_init:
         lda #FLUSH              ; CS high: resets the panel's bit counter
         sta LAT
         jsr delay
-        ldx #0
-@next:  lda init_tab,x
-        inx
+        lda #0                  ; cp+1 = table index (cmd/dat/delay clobber X and Y)
+        sta cp+1
+@next:  ldx cp+1
+        lda init_tab,x
+        inc cp+1
         cmp #$FF
         beq @done
         jsr cmd
+        ldx cp+1
         lda init_tab,x
-        inx
+        inc cp+1
         sta flags
         and #$7F
         beq @nodat
         sta cp                  ; data byte counter
-@dat:   lda init_tab,x
-        inx
-        stx cp+1
+@dat:   ldx cp+1
+        lda init_tab,x
+        inc cp+1
         jsr dat
-        ldx cp+1
         dec cp
         bne @dat
 @nodat: bit flags
         bpl @next
-        stx cp+1
         jsr delay
-        ldx cp+1
         jmp @next
 @done:  rts
 
