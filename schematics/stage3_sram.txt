@@ -1,0 +1,87 @@
+STAGE 3 - SRAM  (HY62CT08081E-D70C, 32K x 8, DIP-28)  ->  RAM at $0000-$7FFF
+===============================================================================
+
+No new logic chips: the 74LS00 (U4) already makes every control signal the SRAM needs.
+Everything else stays exactly as in stage 2 (full_pinmap.txt).
+
+If you tied SRAM pin 20 (/CS) to +5V earlier, REMOVE that wire; it now goes to A15.
+
+Pinout (standard 62256 layout; check yours matches: pin 1 = A14, pin 28 = VCC):
+
+                    +----\/----+
+          A14   1 --|          |-- 28  VCC
+          A12   2 --|          |-- 27  /WE
+          A7    3 --|          |-- 26  A13
+          A6    4 --|          |-- 25  A8
+          A5    5 --|          |-- 24  A9
+          A4    6 --|          |-- 23  A11
+          A3    7 --|  HY62C   |-- 22  /OE
+          A2    8 --|          |-- 21  A10
+          A1    9 --|          |-- 20  /CS
+          A0   10 --|          |-- 19  D7
+          D0   11 --|          |-- 18  D6
+          D1   12 --|          |-- 17  D5
+          D2   13 --|          |-- 16  D4
+          GND  14 --|          |-- 15  D3
+                    +----------+
+
+It is almost the same as the 28C64: same address/data pins on 2-25, except
+pin 1 = A14 (EEPROM: RDY/BUSY), pin 26 = A13 (EEPROM: NC), and pins 20/22/27 differ.
+
+
+PIN TABLE
+---------
+SRAM pin  Name   Connects to                      (same CPU pin also goes to)
+--------  -----  -------------------------------  ---------------------------
+ 1        A14    CPU 24                           74LS00 pin 2
+ 2        A12    CPU 22                           EEPROM 2
+ 3        A7     CPU 16                           EEPROM 3
+ 4        A6     CPU 15                           EEPROM 4
+ 5        A5     CPU 14                           EEPROM 5
+ 6        A4     CPU 13                           EEPROM 6
+ 7        A3     CPU 12                           EEPROM 7
+ 8        A2     CPU 11                           EEPROM 8
+ 9        A1     CPU 10                           EEPROM 9
+10        A0     CPU 9                            EEPROM 10
+11        D0     CPU 33                           EEPROM 11, U5 3
+12        D1     CPU 32                           EEPROM 12, U5 4
+13        D2     CPU 31                           EEPROM 13, U5 5
+14        GND    GND
+15        D3     CPU 30                           EEPROM 15, U5 6
+16        D4     CPU 29                           EEPROM 16
+17        D5     CPU 28                           EEPROM 17
+18        D6     CPU 27                           EEPROM 18
+19        D7     CPU 26                           EEPROM 19
+20        /CS    CPU 25 (A15)                     74LS00 pins 1 and 4
+21        A10    CPU 19                           EEPROM 21
+22        /OE    74LS00 pin 8  (WR)               EEPROM 22, 74LS00 pin 13
+23        A11    CPU 20                           EEPROM 23
+24        A9     CPU 18                           EEPROM 24
+25        A8     CPU 17                           EEPROM 25
+26        A13    CPU 23                           (nothing else)
+27        /WE    74LS00 pin 11 (/WSTB)            U5 pin 2
+28        VCC    +5V, 100nF to GND at the pin
+
+Easiest way on a breadboard: put the SRAM next to the EEPROM and run each
+address/data wire from the EEPROM pin to the matching SRAM pin (same pin number
+for pins 2-13 and 15-25), then add the 6 different ones: 1, 20, 22, 26, 27, 28/14.
+
+
+HOW IT IS SELECTED
+------------------
+  /CS = A15         -> SRAM is on for $0000-$7FFF (A15 = 0), off for $8000-$FFFF
+  /OE = WR          -> SRAM drives the bus only on read cycles
+  /WE = /WSTB       -> SRAM writes only during the second half (phi2) of a write cycle
+No conflict with the EEPROM: the EEPROM is only on for $C000-$FFFF (A15 = 1).
+
+
+CONTINUITY CHECK (power off)
+----------------------------
+[ ] pins 2-13, 15-25: each beeps to the same-numbered EEPROM pin
+[ ] pin 1  - CPU 24        [ ] pin 26 - CPU 23
+[ ] pin 20 - CPU 25        [ ] pin 22 - 74LS00 pin 8
+[ ] pin 27 - 74LS00 pin 11 [ ] pin 28 - +5V, pin 14 - GND
+[ ] pin 20 does NOT beep to +5V (old tie-off removed)
+[ ] pin 1 does NOT beep to pin 26 (A14 vs A13)
+
+TEST: flash build/ramtest.bin (coming next). Slow steady blink = RAM OK.
