@@ -1,4 +1,4 @@
-; Diagnostic for the stage-7 auto-clock SPI wiring. Three 80x80 squares on noise:
+; Diagnostic for the stage-7 auto-clock SPI wiring. Three 70x80 squares on noise:
 ;   LEFT   red    - every byte sent on its own (dat: CS goes high after each byte)
 ;   MIDDLE green  - fast runs (emit: one store per bit, CS high only at the end)
 ;   RIGHT  blue   - one emit per pixel (like the bird's slow path)
@@ -19,12 +19,12 @@ reset:  sei
         jsr lcd_init
 
 ; LEFT: red, byte by byte
-        lda #20
-        ldx #99
+        lda #10
+        ldx #79
         jsr setwin
-        lda #<6400
+        lda #<5600
         sta px
-        lda #>6400
+        lda #>5600
         sta px+1
 @l:     lda #$F8
         jsr dat
@@ -38,13 +38,13 @@ reset:  sei
         ora px+1
         bne @l
 
-; MIDDLE: green, 80 runs of 80 pixels
-        lda #120
-        ldx #199
+; MIDDLE: green, 80 runs of 70 pixels
+        lda #90
+        ldx #159
         jsr setwin
         lda #80
         sta rr
-@m:     lda #80
+@m:     lda #70
         sta cnt
         lda #CI_GRASS
         jsr emit
@@ -53,12 +53,12 @@ reset:  sei
         jsr flush
 
 ; RIGHT: blue-ish (pipe dark), one emit per pixel
-        lda #220
-        ldx #299
+        lda #170
+        ldx #239
         jsr setwin
-        lda #<6400
+        lda #<5600
         sta px
-        lda #>6400
+        lda #>5600
         sta px+1
 @r:     lda #1
         sta cnt
