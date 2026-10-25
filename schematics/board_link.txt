@@ -1,0 +1,38 @@
+WIRES BETWEEN THE TWO BREADBOARDS  (current build: stage 7, flappy.bin v2)
+=========================================================================
+
+TOP board:    CPU (R6502), EEPROM (28C64), SRAM (HY62C), decoder (74LS00)
+BOTTOM board: oscillator (74LS04 + crystal), clock divider (74LS161),
+              LCD latch (74LS161), SCL gate (the new 74xx00), LCD, buttons
+
+#   Signal       TOP end                         BOTTOM end
+--  -----------  ------------------------------  ---------------------------------------
+1   +5V          +5V rail                        +5V rail        (join BOTH sides of the boards)
+2   GND          GND rail                        GND rail        (join BOTH sides of the boards)
+3   CPU clock    CPU pin 37                      clock divider pin 12 (QC, 1.25 MHz)
+                                                 [or pin 11 (QD, 625 kHz)]
+4   D0           CPU 33 (or SRAM 11)             LCD latch pin 3
+5   D1           CPU 32 (or SRAM 12)             LCD latch pin 4
+6   D2           CPU 31 (or SRAM 13)             LCD latch pin 5
+7   D3           CPU 30 (or SRAM 15)             LCD latch pin 6
+8   /IOSEL       decoder pin 6                   LCD latch pin 9  AND oscillator chip pin 1
+9   /WSTB        decoder pin 11                  LCD latch pin 2  AND oscillator chip pin 3
+10  A13          SRAM pin 26 (or CPU 23)         SCL gate pin 2
+11  /RES         CPU pin 40                      LCD latch pin 1  (+ reset button, if it sits below)
+12  /NMI         CPU pin 6                       flap button node (if the button sits below)
+
+Rows 8 and 9 each feed two places below: run one wire down, then branch on the bottom
+board (a hub strip). That is 12 wires; 10 if both buttons sit on the top board.
+
+STAYS ON THE TOP BOARD: all CPU/EEPROM/SRAM address and data wiring, decoder inputs
+(CPU 25, 24, 34, 39), pull-ups on CPU 2/4/6/38, reset network on CPU 40, CPU power and
+decoupling.
+
+STAYS ON THE BOTTOM BOARD: crystal + oscillator chip pins (crystal side), oscillator ->
+divider pin 2, divider tie-offs, oscillator chip pin 2 -> SCL gate pin 1, oscillator chip
+pin 4 -> SCL gate pin 10, SCL gate internal links (3->4,5; 6->9; 8->12,13), SCL gate pin 11
+-> LCD SCL, latch pins 14/12/11 -> LCD SDA/DC/CS, 4.7k pull-ups on SDA/SCL/DC/CS,
+LCD VCC/GND/EN/RST, latch ENP/ENT (pins 7, 10) -> GND.
+
+CHECK AFTER MOVING (power off, meter on beep): every row above beeps end to end;
++5V to GND does NOT beep. Power on: CPU pin 8 and each chip's VCC pin read 4.75-5.25 V.
