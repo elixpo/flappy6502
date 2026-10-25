@@ -24,10 +24,17 @@
 STEP     = 2                    ; scroll px per frame (~48 px/s)
 GAP      = 80                   ; vertical opening between the pipes
 GAP_MIN  = 24                   ; gap top = GAP_MIN + (random & 63)
+.ifdef BITBANG                  ; ~9 frames/s at 1.25 MHz: bigger steps per frame
+FLAP_V   = $F200                ; -14 px/frame  ~ -125 px/s, rises ~33 px in ~0.5 s
+GRAV     = $0300                ; +3 px/frame^2
+MAXV     = $1000                ; fall speed cap 16 px/frame (must stay < 18)
+COL_WAIT = 11                   ; delay for a skipped column ~ cost of a pipe column
+.else
 FLAP_V   = $F680                ; -9.5 px/frame   (8.8 fixed point) ~ -230 px/s
 GRAV     = $014D                ; +1.3 px/frame^2               ~ 750 px/s^2
 MAXV     = $0B00                ; fall speed cap 11 px/frame (must stay < 18)
 COL_WAIT = 6                    ; delay for a skipped column ~ cost of a pipe column
+.endif
 
 ; ---- layout ----
 TFA      = 20                   ; fixed HUD width (memory lines 0-19)
@@ -622,7 +629,22 @@ put_bird:
         lda tz
         cmp #<RING + 1
         bcs @split
-@fast:  lda q
+@fast:
+.ifdef BITBANG
+        lda q                   ; bit-bang: no compiled bird (it would not fit in RAM)
+        clc
+        adc #TFA
+        sta lx
+        lda q+1
+        adc #0
+        sta lx+1
+        lda #0
+        sta c0
+        lda #BW2
+        sta ncol
+        jmp slow_part
+.endif
+        lda q
         clc
         adc #TFA
         sta x0
@@ -758,6 +780,9 @@ gen_bird:
         sta gh
         lda gcol_lo,x
         sta gl
+.ifdef BITBANG
+        jmp @next               ; bit-bang: only BPIX is needed
+.endif
         ldx #16
 @bit:   asl gl
         rol gh                  ; C = next bit, MSB first
@@ -771,7 +796,7 @@ gen_bird:
         jsr put
         dex
         bne @bit
-        inc gc
+@next:  inc gc
         lda gc
         cmp #BW2
         bne @col

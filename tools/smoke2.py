@@ -5,6 +5,7 @@ Writes to $A000-$BFFF clock the panel with the latch value from the PREVIOUS wri
 then load the latch. Renders the screen with the 20 px fixed HUD and measures frames/s.
 
     uv run python tools/smoke2.py        -> build/v2_*.png
+    uv run python tools/smoke2.py bb     bit-bang build (flappy_bb.bin, SCL = latch bit 1)
 """
 import sys
 
@@ -15,6 +16,7 @@ from sim import BUILD, check
 from simgame import LiveLcd
 
 CLOCK, TFA, RING = 1_250_000, 20, 300
+BB = len(sys.argv) > 1 and sys.argv[1] == "bb"
 
 
 class Board2:
@@ -34,6 +36,18 @@ class Board2:
             self.ram[a] = v & 0xFF
             return
         if a >= 0xC000:
+            return
+        if BB:                                # SCL = latch bit 1, sampled on its rising edge
+            v &= 0x0F
+            if v & 0x08:
+                self.n = 0
+            elif v & 0x02 and not self.latch & 0x02:
+                self.bits = (self.bits << 1) | (v & 1)
+                self.n += 1
+                if self.n == 8:
+                    self.lcd.feed(self.mpu.processorCycles, (v >> 2) & 1, self.bits & 0xFF)
+                    self.n = 0
+            self.latch = v
             return
         if a >= 0xA000:                       # SCL pulse samples the old latch value
             old = self.latch
@@ -55,7 +69,7 @@ def screen(lcd):
 
 
 def main():
-    b = Board2((BUILD / "flappy.bin").read_bytes())
+    b = Board2((BUILD / ("flappy_bb.bin" if BB else "flappy.bin")).read_bytes())
     mpu = MPU(memory=b)
     b.mpu = mpu
     mpu.pc = b[0xFFFC] | b[0xFFFD] << 8
@@ -70,9 +84,9 @@ def main():
                     mpu.nmi()
 
     r = []
-    run(8)
+    run(14 if BB else 8)
     s = screen(b.lcd)
-    write_png(BUILD / "v2_1_ready.png", s)
+    write_png(BUILD / ("bb_1_ready.png" if BB else "v2_1_ready.png"), s)
     r.append(check("boot: HUD, sky, ground, bird", s[5][5] == 0x3965 and s[10][100] == 0x4E19
                    and s[235][100] == 0xDED2 and s[103][92] == 0xFFDF,
                    f"HUD {s[5][5]:04X} sky {s[10][100]:04X} dirt {s[235][100]:04X} "
@@ -86,8 +100,8 @@ def main():
     fr = b.lcd.scrolls[f0 + 2:]
     fps = (len(fr) - 1) / ((fr[-1] - fr[0]) / CLOCK) if len(fr) > 2 else 0
     s = screen(b.lcd)
-    write_png(BUILD / "v2_2_play.png", s)
-    r.append(check("plays: frames/s", fps > 15,
+    write_png(BUILD / ("bb_2_play.png" if BB else "v2_2_play.png"), s)
+    r.append(check("plays: frames/s", fps > (8 if BB else 15),
                    f"{fps:.1f} fps at 1.25 MHz ({fps * 0.8:.1f} at 1 MHz), bird row {b.ram[0x25]}, "
                    f"score {b.ram[0x30]:02X} -> build/v2_2_play.png"))
     print(f"{sum(r)}/{len(r)} smoke checks passed")

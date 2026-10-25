@@ -1,4 +1,5 @@
-; ST7789P3 driver for the "auto-clock" SPI (stage 7 wiring).
+; ST7789P3 driver for the "auto-clock" SPI (stage 7 wiring), or with BITBANG defined,
+; for the stage-4 wiring (SCL from the latch, U5 pin 13; no SCL gate chip).
 ;
 ; Hardware: the U5 latch still holds SDA/DC/CS (bits 0, 2, 3) and loads on every write
 ; to $8000-$BFFF. A write to $A000-$BFFF ALSO pulses SCL high during that write cycle,
@@ -14,6 +15,7 @@
 ; Landscape 320x240 (MADCTL $60). Uses zero page $00-$1F.
 
 LAT     = $8000                 ; latch only (no clock)
+SCL     = $02                   ; latch bit 1 (bit-bang mode only: U5 pin 13)
 SPI     = $A000                 ; latch + SCL pulse
 SDA     = $01
 DC      = $04
@@ -46,6 +48,10 @@ lcd_init:
         lda #FLUSH              ; CS high: resets the panel's bit counter
         sta LAT
         jsr delay
+.ifdef BITBANG
+        lda #0                  ; bit-bang: CS low, SCL low, stays selected
+        sta LAT
+.endif
         lda #0                  ; cp+1 = table index (cmd/dat/delay clobber X and Y)
         sta cp+1
 @next:  ldx cp+1
@@ -90,6 +96,18 @@ cmd:    ldx #0
 dat:    ldx #DC
         stx dcbit
 ; A = byte; sends it MSB first, then flushes. ~120 cycles.
+.ifdef BITBANG
+sendb:  sta tmp                 ; bit-bang: SCL is latch bit 1, toggled in software
+        .repeat 8
+        asl tmp
+        lda dcbit
+        adc #0                  ; SDA = C
+        sta LAT                 ; data, SCL low
+        ora #SCL
+        sta LAT                 ; SCL rising edge
+        .endrepeat
+        rts
+.else
 sendb:  sta tmp
         ldx dcbit               ; X = bit 0 value, Y = bit 1 value
         ldy dcbit
@@ -103,6 +121,7 @@ sendb:  sta tmp
 :
         .endrepeat
         jmp flush
+.endif
 
 ; ---- CASET/RASET from x0,x1,y0,y1, then RAMWR. Clobbers A, X, Y ----
 window: lda #$2A
@@ -136,19 +155,36 @@ emit:   tax
         sta vec
         lda run_hi,x
         sta vec+1
+.ifdef BITBANG
+        ldx #DC                 ; data 0, SCL low
+        ldy #DC | SCL           ; data 0, SCL high
+.else
         ldx #DC                 ; data bit 0
         ldy #DC | SDA           ; data bit 1
+.endif
         jmp (vec)
 
 ; One routine per colour: 16 stores per pixel (stx = 0 bit, sty = 1 bit), ~72 cycles.
 .macro  colour_run n
         .ident(.sprintf("run%d", n)):
         .repeat 16, i
+.ifdef BITBANG
+        .if (.ident(.sprintf("GCOL_%d", n)) >> (15 - i)) & 1
+        lda #DC | SDA
+        sta LAT
+        lda #DC | SDA | SCL
+        sta LAT
+        .else
+        stx LAT
+        sty LAT
+        .endif
+.else
         .if (.ident(.sprintf("GCOL_%d", n)) >> (15 - i)) & 1
         sty SPI
         .else
         stx SPI
         .endif
+.endif
         .endrepeat
         dec cnt
         jne .ident(.sprintf("run%d", n))
@@ -169,11 +205,15 @@ run_hi: .repeat NCOL, n
 ; End a transfer: one more clocked store (clocks the last real bit; latches a
 ; CS-low dummy), then raise CS with a latch-only write, so CS never changes
 ; while SCL is high.
+.ifdef BITBANG
+flush:  rts                     ; bit-bang: nothing pending, CS stays low
+.else
 flush:  lda #DC
         sta SPI
         lda #FLUSH
         sta LAT
         rts
+.endif
 
 ; ---- ~164k cycles: 131 ms at 1.25 MHz. Clobbers X, Y ----
 delay:  ldy #$80
