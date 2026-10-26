@@ -43,15 +43,14 @@ cp      = $10                   ; code generator pointer
 :
 .endmacro
 
-; ---- reset the panel and run the init table ----
+; ---- reset the panel and run the init table (same sequence as the ESP32 oreoWare
+;      driver for this module: SmartElex LHS200KP-IF05 / ST7789P3) ----
 lcd_init:
+        lda #0                  ; command mode, SCL/SDA low (used by flush)
+        sta dcbit
         lda #FLUSH              ; CS high: resets the panel's bit counter
         sta LAT
         jsr delay
-.ifdef BITBANG
-        lda #0                  ; bit-bang: CS low, SCL low, stays selected
-        sta LAT
-.endif
         lda #0                  ; cp+1 = table index (cmd/dat/delay clobber X and Y)
         sta cp+1
 @next:  ldx cp+1
@@ -60,37 +59,56 @@ lcd_init:
         cmp #$FF
         beq @done
         jsr cmd
-        ldx cp+1
-        lda init_tab,x
+        ldx cp+1                ; number of data bytes
         inc cp+1
-        sta flags
-        and #$7F
-        beq @nodat
-        sta cp                  ; data byte counter
+        lda init_tab,x          ; (load last: the branch tests this value)
+        sta cp
+        beq @wait
 @dat:   ldx cp+1
         lda init_tab,x
         inc cp+1
         jsr dat
         dec cp
         bne @dat
-@nodat: bit flags
-        bpl @next
-        jsr delay
+@wait:  ldx cp+1                ; then wait this many x ~131 ms (at 1.25 MHz)
+        inc cp+1
+        lda init_tab,x
+        sta cp
+        beq @next
+@w:     jsr delay
+        dec cp
+        bne @w
         jmp @next
-@done:  rts
+@done:  jmp flush
 
+; cmd, number of data bytes, data..., wait units (~131 ms each at 1.25 MHz); $FF ends
 init_tab:
-        .byte $01, $80          ; SWRESET, wait
-        .byte $11, $80          ; SLPOUT, wait
-        .byte $3A, 1, $55       ; COLMOD: 16 bits/pixel (RGB565)
-        .byte $36, 1, $60       ; MADCTL: landscape 320x240
-        .byte $21, 0            ; INVON
-        .byte $13, 0            ; NORON
-        .byte $29, $80          ; DISPON, wait
+        .byte $01, 0, 2                         ; SWRESET            (ESP32: 150 ms)
+        .byte $11, 0, 4                         ; SLPOUT             (ESP32: 500 ms)
+        .byte $3A, 1, $55, 0                    ; COLMOD 16 bit RGB565
+        .byte $36, 1, $60, 0                    ; MADCTL landscape 320x240
+        .byte $B2, 5, $0C, $0C, $00, $33, $33, 0 ; PORCTRL porch
+        .byte $C6, 1, $1F, 0                    ; FRCTRL2 ~39 Hz refresh
+        .byte $C0, 1, $2C, 0                    ; LCMCTRL
+        .byte $C2, 1, $01, 0                    ; VDVVRHEN
+        .byte $C3, 1, $12, 0                    ; VRHS
+        .byte $C4, 1, $20, 0                    ; VDVS
+        .byte $BB, 1, $20, 0                    ; VCOMS
+        .byte $2A, 4, $00, $00, $01, $3F, 0     ; CASET 0..319
+        .byte $2B, 4, $00, $00, $00, $EF, 0     ; RASET 0..239
+        .byte $21, 0, 1                         ; INVON (IPS)        (ESP32: 10 ms)
+        .byte $13, 0, 1                         ; NORON              (ESP32: 10 ms)
+        .byte $29, 0, 1                         ; DISPON             (ESP32: 100 ms)
         .byte $FF
 
 ; ---- one byte as a command / as data. Clobbers A, X, Y ----
-cmd:    ldx #0
+cmd:
+.ifdef BITBANG
+        pha                     ; like the ESP32: every command starts a new CS frame
+        jsr flush
+        pla
+.endif
+        ldx #0
         stx dcbit
         jmp sendb
 dat:    ldx #DC
@@ -206,7 +224,11 @@ run_hi: .repeat NCOL, n
 ; CS-low dummy), then raise CS with a latch-only write, so CS never changes
 ; while SCL is high.
 .ifdef BITBANG
-flush:  rts                     ; bit-bang: nothing pending, CS stays low
+flush:  lda dcbit               ; end the CS frame: SCL low first, then CS high
+        sta LAT
+        lda #FLUSH
+        sta LAT
+        rts
 .else
 flush:  lda #DC
         sta SPI
