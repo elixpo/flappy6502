@@ -37,3 +37,10 @@ Power-up sequence this gives (same as the ESP32 driver):
 Recommended: 10uF (instead of 1uF) from CPU pin 40 to GND -> ~100 ms power-on reset.
 
 Program: build/flappy_bb.bin (SCL toggled in software on latch pin 13).
+
+LATCH CLOCK FIX (2026-10-27): with the boards split, the write strobe (decoder pin 11 ->
+LCD latch pin 2) runs over a long wire and rings; the extra edge re-clocked the latch after
+the data had gone, loading 1111 (SDA/SCL/DC/CS stuck high, blank screen). Touching pin 2
+with a meter probe (~100 pF) made it work. Fix: 10 pF ceramic ("100") from latch pin 2 to
+GND at the latch (plus optional 100R in series at the decoder end). Now draws on its own.
+RESULT: flappy_bb.bin draws the game with this wiring.
