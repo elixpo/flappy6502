@@ -98,6 +98,50 @@ GCOL_15       = $FFFF
 gcol_hi: .byte $4E, $39, $FE, $EC, $FF, $F2, $FF, $39, $9F, $75, $54, $5F, $3D, $DE, $D5, $FF
 gcol_lo: .byte $19, $65, $C7, $C6, $DF, $C6, $94, $65, $2B, $E5, $04, $0E, $49, $D2, $49, $FF
 
+; 12-bit colours (RGB444) and their cheap bit value (1 = mostly ones)
+G12_0         = $4CC
+GMAJ_0        = 0
+G12_1         = $322
+GMAJ_1        = 0
+G12_2         = $FD3
+GMAJ_2        = 1
+G12_3         = $E93
+GMAJ_3        = 1
+G12_4         = $FFF
+GMAJ_4        = 1
+G12_5         = $F53
+GMAJ_5        = 1
+G12_6         = $FFA
+GMAJ_6        = 1
+G12_7         = $322
+GMAJ_7        = 0
+G12_8         = $9E5
+GMAJ_8        = 1
+G12_9         = $7B2
+GMAJ_9        = 1
+G12_10        = $582
+GMAJ_10       = 0
+G12_11        = $5E7
+GMAJ_11       = 1
+G12_12        = $3A4
+GMAJ_12       = 0
+G12_13        = $DD9
+GMAJ_13       = 1
+G12_14        = $DA4
+GMAJ_14       = 0
+G12_15        = $FFF
+GMAJ_15       = 1
+g12_hi: .byte $4C, $32, $FD, $E9, $FF, $F5, $FF, $32, $9E, $7B, $58, $5E, $3A, $DD, $DA, $FF   ; bits 11-4
+g12_lo: .byte $C0, $20, $30, $30, $F0, $30, $A0, $20, $50, $20, $20, $70, $40, $90, $40, $F0   ; bits 3-0 << 4
+BCODE_SIZE = 31437          ; bytes of compiled bird code (12-bit)
+BCODE_CYC  = 40076          ; cycles to draw it
+
+; erase spans for a k-row vertical move (index k-1)
+top_l:  .byte 6, 6, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+top_w:  .byte 8, 8, 14, 16, 16, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18
+bot_l:  .byte 8, 5, 5, 3, 3, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+bot_w:  .byte 4, 10, 10, 14, 14, 14, 16, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18
+
 ; bird 18x18, one byte per pixel = colour id (row-major)
 bird16:
         .byte $00, $00, $00, $00, $00, $00, $10, $10, $10, $10, $10, $10, $10, $10, $00, $00, $00, $00

@@ -51,7 +51,14 @@ SCORE_Y  = 60                   ; big game-over score
 NOPIPE   = $FF
 
 BCODE    = $0400                ; compiled bird: 360 px x 16 stores x 3 bytes + rts
+.ifdef BITBANG
+BPIX     = $0200                ; 360 bytes; the 12-bit compiled bird fills $0400-$7FCD
+.else
 BPIX     = $4800                ; the same 20x18 picture as colour indices (slow path)
+.endif
+pm       = $74                  ; bird compiler: cheap bit of the previous pixel
+gci      = $75                  ;                colour index
+gb       = $76                  ;                bit value
 
 ; ---- zero page ($00-$1F belong to lcd2.inc) ----
 flap    = $20                   ; incremented by the NMI (button)
@@ -487,12 +494,22 @@ pipe_col:
         lda gp
         cmp #NOPIPE
         bne @two
-        lda #0
+        lda #0                  ; the line was all sky: draw [0, gt) and [gt+GAP, 200);
+        sta r0                  ; the gap rows are sky before and after
+        lda gt
+        sta r1
+        jsr setrows
+        jsr window
+        jsr segs
+        jsr flush
+        lda gt
+        clc
+        adc #GAP
         sta r0
         lda #GROUND_Y
         sta r1
         jsr setrows
-        jsr window
+        jsr window_y
         jsr segs
         jmp flush
 
@@ -586,18 +603,26 @@ cap_id:
 ; Bird
 
 ; old rows the bird left when it moved up or down (cols BIRD_X-STEP .. +17)
+; Only the columns the old bird really covered in those rows (the bird is round, so
+; its top/bottom rows are narrow): spans from top_l/top_w, bot_l/bot_w in gfx.inc.
 erase_v:
         lda yp
         cmp oy
         beq @done
         bcc @up
-        lda oy
+        lda oy                  ; moved down k = yp - oy rows: old top k rows
         sta ry0
         ldx yp
         dex
         stx ry1
+        lda yp
+        sec
+        sbc oy
+        tax
+        lda top_l-1,x
+        ldy top_w-1,x
         jmp @do
-@up:    lda yp
+@up:    lda yp                  ; moved up k = oy - yp rows: old bottom k rows
         clc
         adc #BIRD_H
         sta ry0
@@ -605,9 +630,19 @@ erase_v:
         clc
         adc #BIRD_H - 1
         sta ry1
-@do:    set16 sx, BIRD_X - STEP
-        lda #BIRD_W
-        sta rw
+        lda oy
+        sec
+        sbc yp
+        tax
+        lda bot_l-1,x
+        ldy bot_w-1,x
+@do:    clc                     ; x = BIRD_X - STEP + span start (old bird moved left)
+        adc #<(BIRD_X - STEP)
+        sta sx
+        lda #0
+        adc #>(BIRD_X - STEP)
+        sta sx+1
+        sty rw
         lda #CI_SKY
         sta rcol
         jmp srect
@@ -629,22 +664,7 @@ put_bird:
         lda tz
         cmp #<RING + 1
         bcs @split
-@fast:
-.ifdef BITBANG
-        lda q                   ; bit-bang: no compiled bird (it would not fit in RAM)
-        clc
-        adc #TFA
-        sta lx
-        lda q+1
-        adc #0
-        sta lx+1
-        lda #0
-        sta c0
-        lda #BW2
-        sta ncol
-        jmp slow_part
-.endif
-        lda q
+@fast:  lda q
         clc
         adc #TFA
         sta x0
@@ -750,6 +770,8 @@ birdrows:
 ; Compile the bird into RAM: for every pixel of the BW2 x 18 picture
 ; (STEP sky columns, then the sprite), 16 x "stx SPI" (0 bit) / "sty SPI" (1 bit).
 gen_bird:
+        lda #$FF                ; no cheap bit loaded yet: first pixel reloads X/Y
+        sta pm
         set16 cp, BCODE
         set16 bp2, BPIX
         set16 bptr, bird16
@@ -781,7 +803,74 @@ gen_bird:
         lda gcol_lo,x
         sta gl
 .ifdef BITBANG
-        jmp @next               ; bit-bang: only BPIX is needed
+        ; 12 bits, MSB first. X/Y hold this colour's cheap pair; reload them (4 bytes)
+        ; only when the cheap bit changes from the previous pixel.
+        stx gci
+        lda gmaj_tab,x
+        cmp pm
+        beq @same
+        sta pm
+        lda #$A2                ; ldx #
+        jsr put
+        lda pm
+        ora #DC
+        jsr put
+        lda #$A0                ; ldy #
+        jsr put
+        lda pm
+        ora #DC | SCL
+        jsr put
+@same:  ldx gci
+        lda g12_hi,x
+        sta gh
+        lda g12_lo,x
+        sta gl
+        ldx #12
+@b12:   asl gl
+        rol gh                  ; C = next bit
+        lda #0
+        rol a                   ; A = that bit
+        cmp pm
+        beq @cheap
+        sta gb                  ; other bit: lda #L / sta LAT / lda #H / sta LAT
+        lda #$A9
+        jsr put
+        lda gb
+        ora #DC
+        jsr put
+        lda #$8D
+        jsr put
+        lda #<LAT
+        jsr put
+        lda #>LAT
+        jsr put
+        lda #$A9
+        jsr put
+        lda gb
+        ora #DC | SCL
+        jsr put
+        lda #$8D
+        jsr put
+        lda #<LAT
+        jsr put
+        lda #>LAT
+        jsr put
+        jmp @nb
+@cheap: lda #$8E                ; stx LAT
+        jsr put
+        lda #<LAT
+        jsr put
+        lda #>LAT
+        jsr put
+        lda #$8C                ; sty LAT
+        jsr put
+        lda #<LAT
+        jsr put
+        lda #>LAT
+        jsr put
+@nb:    dex
+        jne @b12
+        jmp @next
 .endif
         ldx #16
 @bit:   asl gl
@@ -799,7 +888,7 @@ gen_bird:
 @next:  inc gc
         lda gc
         cmp #BW2
-        bne @col
+        jne @col
         lda bptr
         clc
         adc #BIRD_W
@@ -807,7 +896,7 @@ gen_bird:
         bcc :+
         inc bptr+1
 :       dec rows
-        bne @row
+        jne @row
         lda #$60                ; rts
         ; fall through
 put:    ldy #0

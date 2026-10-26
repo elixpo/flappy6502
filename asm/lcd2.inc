@@ -35,6 +35,7 @@ y1      = $0A
 cnt     = $0C                   ; pixels left in a run
 vec     = $0E                   ; jump vector for emit
 cp      = $10                   ; code generator pointer
+par     = $12                   ; bit-bang 12-bit mode: 1 = odd pixel count so far
 
 ; bne to a label that may be out of branch range
 .macro  jne target
@@ -48,6 +49,7 @@ cp      = $10                   ; code generator pointer
 lcd_init:
         lda #0                  ; command mode, SCL/SDA low (used by flush)
         sta dcbit
+        sta par
         lda #FLUSH              ; CS high: resets the panel's bit counter
         sta LAT
         jsr delay
@@ -81,11 +83,16 @@ lcd_init:
         jmp @next
 @done:  jmp flush
 
-; cmd, number of data bytes, data..., wait units (~131 ms each at 1.25 MHz); $FF ends
+; cmd, number of data bytes, data..., wait units (131 ms at 1.25 MHz, 65 ms at 2.5 MHz);
+; the waits are sized so even 2.5 MHz meets the ESP32 timings. $FF ends
 init_tab:
-        .byte $01, 0, 2                         ; SWRESET            (ESP32: 150 ms)
-        .byte $11, 0, 4                         ; SLPOUT             (ESP32: 500 ms)
+        .byte $01, 0, 4                         ; SWRESET            (ESP32: 150 ms)
+        .byte $11, 0, 8                         ; SLPOUT             (ESP32: 500 ms)
+.ifdef BITBANG
+        .byte $3A, 1, $53, 0                    ; COLMOD 12 bit RGB444 (fewer bits)
+.else
         .byte $3A, 1, $55, 0                    ; COLMOD 16 bit RGB565
+.endif
         .byte $36, 1, $60, 0                    ; MADCTL landscape 320x240
         .byte $B2, 5, $0C, $0C, $00, $33, $33, 0 ; PORCTRL porch
         .byte $C6, 1, $1F, 0                    ; FRCTRL2 ~39 Hz refresh
@@ -98,7 +105,7 @@ init_tab:
         .byte $2B, 4, $00, $00, $00, $EF, 0     ; RASET 0..239
         .byte $21, 0, 1                         ; INVON (IPS)        (ESP32: 10 ms)
         .byte $13, 0, 1                         ; NORON              (ESP32: 10 ms)
-        .byte $29, 0, 1                         ; DISPON             (ESP32: 100 ms)
+        .byte $29, 0, 2                         ; DISPON             (ESP32: 100 ms)
         .byte $FF
 
 ; ---- one byte as a command / as data. Clobbers A, X, Y ----
@@ -169,50 +176,76 @@ window_y:                       ; same column range, new rows
 ; ---- send cnt (1..255) pixels of colour index A. Leaves X = $04, Y = $05 ----
 ; The caller ends the whole pixel stream with: jsr flush
 emit:   tax
+.ifdef BITBANG
+        lda cnt                 ; track odd/even pixel count (12-bit: 2 px = 3 bytes)
+        and #1
+        eor par
+        sta par
+.endif
         lda run_lo,x
         sta vec
         lda run_hi,x
         sta vec+1
-.ifdef BITBANG
-        ldx #DC                 ; data 0, SCL low
-        ldy #DC | SCL           ; data 0, SCL high
-.else
+.ifndef BITBANG
         ldx #DC                 ; data bit 0
         ldy #DC | SDA           ; data bit 1
 .endif
         jmp (vec)
 
 ; One routine per colour: 16 stores per pixel (stx = 0 bit, sty = 1 bit), ~72 cycles.
+.ifdef BITBANG
+; Bit-bang, 12 bits per pixel. X/Y = the colour's cheap bit value (SCL low / high):
+; cheap bit = stx/sty (8 cycles), the other = 2 immediate loads + 2 stores (12).
+.macro  colour_run n
+        .local loop
+        .ident(.sprintf("run%d", n)):
+        .if .ident(.sprintf("GMAJ_%d", n))
+        ldx #DC | SDA
+        ldy #DC | SDA | SCL
+        .else
+        ldx #DC
+        ldy #DC | SCL
+        .endif
+loop:
+        .repeat 12, i
+        .if ((.ident(.sprintf("G12_%d", n)) >> (11 - i)) & 1) = .ident(.sprintf("GMAJ_%d", n))
+        stx LAT
+        sty LAT
+        .else
+        lda #DC | ((.ident(.sprintf("G12_%d", n)) >> (11 - i)) & 1)
+        sta LAT
+        lda #DC | SCL | ((.ident(.sprintf("G12_%d", n)) >> (11 - i)) & 1)
+        sta LAT
+        .endif
+        .endrepeat
+        dec cnt
+        jne loop
+        rts
+.endmacro
+.else
 .macro  colour_run n
         .ident(.sprintf("run%d", n)):
         .repeat 16, i
-.ifdef BITBANG
-        .if (.ident(.sprintf("GCOL_%d", n)) >> (15 - i)) & 1
-        lda #DC | SDA
-        sta LAT
-        lda #DC | SDA | SCL
-        sta LAT
-        .else
-        stx LAT
-        sty LAT
-        .endif
-.else
         .if (.ident(.sprintf("GCOL_%d", n)) >> (15 - i)) & 1
         sty SPI
         .else
         stx SPI
         .endif
-.endif
         .endrepeat
         dec cnt
         jne .ident(.sprintf("run%d", n))
         rts
 .endmacro
+.endif
 
         .repeat NCOL, n
         colour_run n
         .endrepeat
 
+gmaj_tab:
+        .repeat NCOL, n
+        .byte .ident(.sprintf("GMAJ_%d", n))
+        .endrepeat
 run_lo: .repeat NCOL, n
         .byte <.ident(.sprintf("run%d", n))
         .endrepeat
@@ -224,7 +257,17 @@ run_hi: .repeat NCOL, n
 ; CS-low dummy), then raise CS with a latch-only write, so CS never changes
 ; while SCL is high.
 .ifdef BITBANG
-flush:  lda dcbit               ; end the CS frame: SCL low first, then CS high
+flush:  lda par                 ; odd pixel count: 4 padding bits complete the byte
+        beq @even
+        .repeat 4
+        lda #DC
+        sta LAT
+        lda #DC | SCL
+        sta LAT
+        .endrepeat
+        lda #0
+        sta par
+@even:  lda dcbit               ; end the CS frame: SCL low first, then CS high
         sta LAT
         lda #FLUSH
         sta LAT

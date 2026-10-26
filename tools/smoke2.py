@@ -87,8 +87,16 @@ def main():
     run(14 if BB else 8)
     s = screen(b.lcd)
     write_png(BUILD / ("bb_1_ready.png" if BB else "v2_1_ready.png"), s)
-    r.append(check("boot: HUD, sky, ground, bird", s[5][5] == 0x3965 and s[10][100] == 0x4E19
-                   and s[235][100] == 0xDED2 and s[103][92] == 0xFFDF,
+    def c(hex6):                              # expected panel colour for '#RRGGBB'
+        v = int(hex6[1:], 16)
+        if not BB:
+            return ((v >> 19) << 11) | (((v >> 10) & 63) << 5) | ((v >> 3) & 31)
+        r, g, bl = v >> 20, (v >> 12) & 15, (v >> 4) & 15
+        return (r << 1 | r >> 3) << 11 | (g << 2 | g >> 2) << 5 | (bl << 1 | bl >> 3)
+
+    r.append(check("boot: HUD, sky, ground, bird", s[5][5] == c("#3B2E2E")
+                   and s[10][100] == c("#4EC0CA") and s[235][100] == c("#DED895")
+                   and s[103][92] == c("#F8F8F8"),
                    f"HUD {s[5][5]:04X} sky {s[10][100]:04X} dirt {s[235][100]:04X} "
                    f"eye {s[103][92]:04X} -> build/v2_1_ready.png"))
 
@@ -101,7 +109,7 @@ def main():
     fps = (len(fr) - 1) / ((fr[-1] - fr[0]) / CLOCK) if len(fr) > 2 else 0
     s = screen(b.lcd)
     write_png(BUILD / ("bb_2_play.png" if BB else "v2_2_play.png"), s)
-    r.append(check("plays: frames/s", fps > (8 if BB else 15),
+    r.append(check("plays: frames/s", fps > (10 if BB else 15),
                    f"{fps:.1f} fps at 1.25 MHz ({fps * 0.8:.1f} at 1 MHz), bird row {b.ram[0x25]}, "
                    f"score {b.ram[0x30]:02X} -> build/v2_2_play.png"))
     print(f"{sum(r)}/{len(r)} smoke checks passed")

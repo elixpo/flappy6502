@@ -118,6 +118,49 @@ def main() -> None:
         lines.append(f"GCOL_{i:<8} = ${rgb(c):04X}")
     lines.append("gcol_hi: .byte " + ", ".join(f"${rgb(c) >> 8:02X}" for _n, c in game))
     lines.append("gcol_lo: .byte " + ", ".join(f"${rgb(c) & 0xFF:02X}" for _n, c in game))
+    # 12-bit colour (RGB444, COLMOD $53) for the bit-banged build. Each bit costs two
+    # latch stores; the "cheap" bit value uses X/Y (8 cycles), the other needs two
+    # immediate loads (12 cycles). GMAJ_i = the cheap value chosen for colour i.
+    c12 = [((int(c[1:3], 16) >> 4) << 8) | ((int(c[3:5], 16) >> 4) << 4) | (int(c[5:7], 16) >> 4)
+           for _n, c in game]
+    lines += ["", "; 12-bit colours (RGB444) and their cheap bit value (1 = mostly ones)"]
+    for i, v in enumerate(c12):
+        lines.append(f"G12_{i:<9} = ${v:03X}")
+        lines.append(f"GMAJ_{i:<8} = {1 if bin(v).count('1') >= 7 else 0}")
+    lines.append("g12_hi: .byte " + ", ".join(f"${v >> 4:02X}" for v in c12) + "   ; bits 11-4")
+    lines.append("g12_lo: .byte " + ", ".join(f"${(v << 4) & 0xFF:02X}" for v in c12) + "   ; bits 3-0 << 4")
+    # Compiled bird (bit-bang build): BW2 = 2 sky columns + the sprite, 12 bits/pixel.
+    step = 2
+    # Per pixel, X/Y hold the cheap pair for that pixel's colour; a colour change costs
+    # a 4-byte reload (ldx #/ldy #). Cheap bit = 6 bytes / 8 cycles, other = 10 / 12.
+    gmaj = [1 if bin(v).count('1') >= 7 else 0 for v in c12]
+    code, cycles, prev = 1, 0, None
+    for y in range(size):
+        for x in range(size + step):
+            ci = 0 if x < step else idx[y][x - step]
+            if gmaj[ci] != prev:
+                code, cycles, prev = code + 4, cycles + 4, gmaj[ci]
+            for k in range(12):
+                cheap = (c12[ci] >> (11 - k) & 1) == gmaj[ci]
+                code += 6 if cheap else 10
+                cycles += 8 if cheap else 12
+    assert code <= 0x8000 - 0x0400, f"compiled bird needs {code} bytes, RAM has {0x7C00}"
+    lines.append(f"BCODE_SIZE = {code}          ; bytes of compiled bird code (12-bit)")
+    lines.append(f"BCODE_CYC  = {cycles}          ; cycles to draw it")
+    # Erase spans: after a vertical move of k rows, only the columns the old bird
+    # really covered in those k rows need sky. top_l/top_r[k-1] = union of rows 0..k-1,
+    # bot_l/bot_r[k-1] = union of the last k rows (sprite columns, before STEP offset).
+    spans = [[x for x in range(size) if row[x] != 0] for row in idx]
+    def union(rows):
+        cols = [x for r in rows for x in spans[r]]
+        return (min(cols), max(cols)) if cols else (0, 0)
+    tops = [union(range(k)) for k in range(1, size + 1)]
+    bots = [union(range(size - k, size)) for k in range(1, size + 1)]
+    lines += ["", "; erase spans for a k-row vertical move (index k-1)"]
+    lines.append("top_l:  .byte " + ", ".join(str(a) for a, _b in tops))
+    lines.append("top_w:  .byte " + ", ".join(str(b - a + 1) for a, b in tops))
+    lines.append("bot_l:  .byte " + ", ".join(str(a) for a, _b in bots))
+    lines.append("bot_w:  .byte " + ", ".join(str(b - a + 1) for a, b in bots))
     lines += ["", f"; bird {size}x{size}, one byte per pixel = colour id (row-major)", "bird16:"]
     for row in idx:
         lines.append("        .byte " + ", ".join(f"${i * 16:02X}" for i in row))

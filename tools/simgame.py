@@ -34,26 +34,33 @@ class LiveLcd:
         self.x = self.y = 0
         self.scrolls = []          # cycle of every VSCRSADD = one frame
         self.hi = None
+        self.bpp12 = False         # COLMOD $x3: 12 bits per pixel (RGB444)
+        self.nib = []
 
     def feed(self, cycle, dc, b):
         if dc == 0:
-            self.cmd, self.data, self.hi = b, [], None
+            self.cmd, self.data, self.hi, self.nib = b, [], None, []
             if b == 0x2C:
                 self.x, self.y = self.xs, self.ys
+            return
+        if self.cmd == 0x2C and self.bpp12:
+            self.nib += [b >> 4, b & 15]
+            while len(self.nib) >= 3:
+                r, g, bl = self.nib[:3]
+                del self.nib[:3]
+                self._put((r << 1 | r >> 3) << 11 | (g << 2 | g >> 2) << 5 | (bl << 1 | bl >> 3))
             return
         if self.cmd == 0x2C:
             if self.hi is None:
                 self.hi = b
                 return
-            if self.x < 320 and self.y < 240:
-                self.fb[self.y][self.x] = self.hi << 8 | b
+            self._put(self.hi << 8 | b)
             self.hi = None
-            self.x += 1
-            if self.x > self.xe:
-                self.x, self.y = self.xs, self.y + 1
             return
         self.data.append(b)
         d = self.data
+        if self.cmd == 0x3A and len(d) == 1:
+            self.bpp12 = (b & 7) == 3
         if self.cmd == 0x2A and len(d) == 4:
             self.xs, self.xe = d[0] << 8 | d[1], d[2] << 8 | d[3]
         elif self.cmd == 0x2B and len(d) == 4:
@@ -61,6 +68,13 @@ class LiveLcd:
         elif self.cmd == 0x37 and len(d) == 2:
             self.vsp = d[0] << 8 | d[1]
             self.scrolls.append(cycle)
+
+    def _put(self, c):
+        if self.x < 320 and self.y < 240:
+            self.fb[self.y][self.x] = c
+        self.x += 1
+        if self.x > self.xe:
+            self.x, self.y = self.xs, self.y + 1
 
     def screen(self):
         """What the panel shows: screen x = (memory line - VSP) mod 320."""
