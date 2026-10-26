@@ -1,0 +1,39 @@
+LCD FINAL WIRING  (decided 2026-10-27; replaces the pull-up / divider / RC experiments)
+=====================================================================================
+
+RULE: no LCD input may be fed 5 V, and every LCD input must be LOW while the module
+powers up. High = ~3.3-3.4 V from a DRIVEN logic output (like the ESP32 GPIOs that run
+this module fine), never 5 V through a resistor.
+
+Why (from measurements):
+  - RST clamped at 2.3-2.5 V through both 10k and 1k pull-ups, and forcing RST to 5 V
+    killed the backlight; the backlight flashed as power went off; replugging fixed it.
+    = the module was being back-powered through its input-protection diodes, which keeps
+    its on-board 3.3 V regulator from starting cleanly.
+  - The same module is stable on the ESP32: 3.3 V push-pull pins, low/floating at power-up.
+  So: pull-ups to +5V, RST/EN tied to +5V and dividers from 5 V all made it worse.
+
+LCD pin   Connect to                              Level
+-------   --------------------------------------  -----------------------------------------
+VCC       +5V  (10uF + 100nF at the module)        module makes its own 3.3 V
+GND       GND
+SDA       LCD latch (74LS161) pin 14, direct       0 / ~3.4 V
+SCL       LCD latch pin 13, direct                 0 / ~3.4 V
+DC        LCD latch pin 12, direct                 0 / ~3.4 V
+CS        LCD latch pin 11, direct                 0 / ~3.4 V
+RST       oscillator 74LS04 pin 4                  low during CPU reset, ~3.4 V after
+EN        oscillator 74LS04 pin 4 (same as RST)    low during CPU reset, ~3.4 V after
+TE        not connected
+
+NO pull-ups, NO series resistors, NO dividers, NO RC parts on any LCD pin.
+
+Oscillator 74LS04 spare inverters (the crystal uses the other side):
+  pin 1 <- CPU pin 40 (/RES)   pin 2 -> pin 3   pin 4 -> LCD RST and LCD EN   pin 5 -> GND
+
+Power-up sequence this gives (same as the ESP32 driver):
+  /RES low (power-on RC on CPU pin 40) -> latch cleared: SDA/SCL/DC/CS = 0, RST/EN = 0
+  -> module powers up with nothing feeding its pins -> /RES rises -> RST/EN go high
+  -> firmware waits, then SWRESET, SLPOUT, ... DISPON (flappy_bb.bin, ESP32 command list).
+Recommended: 10uF (instead of 1uF) from CPU pin 40 to GND -> ~100 ms power-on reset.
+
+Program: build/flappy_bb.bin (SCL toggled in software on latch pin 13).
