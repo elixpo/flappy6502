@@ -16,7 +16,7 @@ bit-banged SPI. One button (NMI) flaps.
 | `asm/` | 6502 sources (ca65): the game, the LCD drivers, hardware test programs |
 | `roms/` | prebuilt 8 KiB EEPROM images, ready to flash (`flappy_bb.bin` is the game) |
 | `hardware/` | wiring for every stage, pin maps, the final LCD wiring |
-| `docs/` | design plan and project handoff notes |
+| `docs/` | original design plan, game screenshot |
 | `tools/` | graphics generator, 6502 simulator, smoke test, profiler, PNG writer |
 | `programmer/` | Nano28C64 EEPROM programmer CLI and firmware (MIT), used by `./flash` |
 
