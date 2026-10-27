@@ -7,17 +7,32 @@ bit-banged SPI. One button (NMI) flaps.
 **Status (2026-10-27): working on the real hardware.** `build/flappy_bb.bin`, played at
 1 MHz (about 10.8 frames/s; 13.6 at 1.25 MHz).
 
+![game running in the simulator](docs/screenshot.png)
+
+## Repository layout
+
+| Folder | What |
+|---|---|
+| `asm/` | 6502 sources (ca65): the game, the LCD drivers, hardware test programs |
+| `roms/` | prebuilt 8 KiB EEPROM images, ready to flash (`flappy_bb.bin` is the game) |
+| `hardware/` | wiring for every stage, pin maps, the final LCD wiring |
+| `docs/` | design plan and project handoff notes |
+| `tools/` | graphics generator, 6502 simulator, smoke test, profiler, PNG writer |
+| `programmer/` | Nano28C64 EEPROM programmer CLI and firmware (MIT), used by `./flash` |
+
+The ST7789 module datasheet (SmartElex LHS200KP-IF05) is not included; get it from the vendor.
+
 ## Build and flash
 
 ```bash
 python3 tools/gfx.py        # bird sprite + colours -> asm/gfx.inc (only after editing art)
 make                        # assemble asm/*.s -> build/*.bin (cc65 in ~/.local/opt/cc65)
-./flash build/flappy_bb.bin # Nano28C64 programmer: write, verify, re-verify
+./flash roms/flappy_bb.bin  # Nano28C64 programmer: write, verify, re-verify (or build/ after make)
 uv run python tools/smoke2.py bb   # simulator: boot screen + frames/s
 uv run python tools/profile.py     # simulator: cycles per frame stage
 ```
 
-## Hardware docs (`schematics/`)
+## Hardware docs (`hardware/`)
 
 | File | What |
 |---|---|
