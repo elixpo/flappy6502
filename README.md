@@ -40,6 +40,7 @@ uv run python tools/profile.py     # simulator: cycles per frame stage
 | `cpu_r6502.txt`, `full_pinmap.txt` | CPU pins and the full pin map |
 | `stage2_rom_decoder_latch.txt` | EEPROM, decoder, LCD latch |
 | `stage3_sram.txt` | SRAM |
+| `flappy6502.kicad_sch`, `flappy6502_schematic.pdf` | **full KiCad schematic** of the working build (label-based nets; regenerate with `uv run --with kiutils python tools/gen_schematic.py`) |
 | `lcd_final.txt` | **final LCD wiring** (no 5 V into the module; RST/EN from a 74LS04 after /RES; 10 pF on the latch clock) |
 | `stage5_button.txt` | flap button on NMI |
 | `board_link.txt` | wires between the two breadboards |

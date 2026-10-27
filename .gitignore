@@ -7,3 +7,4 @@ build/prof.*
 build/
 guide
 *.pdf
+!hardware/flappy6502_schematic.pdf
