@@ -1,5 +1,9 @@
 # flappy6502
 
+[![Listed on 6502.org Homebuilt Projects](https://img.shields.io/badge/6502.org-Homebuilt%20Projects-2b6cb0)](https://6502.org/homebuilt/)
+[![CPU: R6502 NMOS](https://img.shields.io/badge/CPU-R6502%20NMOS%20%40%201%20MHz-555)](#)
+[![Assembler: ca65](https://img.shields.io/badge/asm-ca65-555)](https://cc65.github.io/)
+
 Flappy Bird on a breadboard computer: Rockwell R6502 (NMOS), 28C64 EEPROM, 32 KB SRAM,
 74LS00 decoder, a 74LS161 as the LCD port, and a SmartElex 2" ST7789 IPS LCD driven by
 bit-banged SPI. One button (NMI) flaps.
