@@ -1,5 +1,14 @@
-; Flappy Bird v2 for the R6502 + ST7789, using the auto-clock SPI (stage 7 wiring).
-; Target ~24 frames/s at 1.25 MHz.
+; Flappy Bird v2 for the R6502 + ST7789. One source, two builds:
+;
+;   flappy_bb.s -> build/flappy_bb.bin   THE BUILD THAT RUNS ON THE HARDWARE
+;     BITBANG defined: SCL toggled in software on LCD latch pin 13 (2 stores per bit),
+;     12-bit colour, compiled bird with per-colour cheap bits. Measured in the
+;     simulator: ~13.6 frames/s at 1.25 MHz, ~10.8 at 1 MHz.
+;
+;   flappy.s    -> build/flappy.bin      EXPERIMENTAL, never worked on the board
+;     auto-clock SPI (hardware/stage7_autoclock_spi.txt): a write to $A000 pulses SCL
+;     itself (1 store per bit), 16-bit colour. ~22 frames/s at 1.25 MHz in the
+;     simulator only; needs a working 74LS00/74HCT00 SCL gate.
 ;
 ; Screen (landscape 320x240):
 ;   x 0-19     fixed HUD strip (never scrolls): live score, 3 digits top to bottom
@@ -11,25 +20,27 @@
 ; Speed tricks:
 ;  - world moves by the panel's hardware scroll; only the STEP columns that wrap to
 ;    the right edge are drawn, and pipe columns only where old and new pipe differ
-;  - one store per SPI bit (the write to $A000 makes the clock pulse itself)
 ;  - the bird (+ STEP sky columns on its left) is compiled at boot into RAM as
-;    5760 straight-line stores, ~23k cycles to draw
+;    straight-line stores: bit-bang build ~31 KB / ~40k cycles (12-bit, 2 stores per
+;    bit), auto-clock build 5760 stores / ~23k cycles (16-bit, 1 store per bit)
+;  - bit-bang build: each colour's common bit value sits in X/Y (stx/sty, 8 cycles);
+;    the other value costs two immediate loads (12 cycles)
 
         .setcpu "6502"
         .segment "CODE"
         .include "gfx.inc"
         .include "lcd2.inc"
 
-; ---- tuning (per frame; ~24 frames/s at 1.25 MHz) ----
-STEP     = 2                    ; scroll px per frame (~48 px/s)
+; ---- tuning (per frame: game speed scales with the frame rate) ----
+STEP     = 2                    ; scroll px per frame
 GAP      = 80                   ; vertical opening between the pipes
 GAP_MIN  = 24                   ; gap top = GAP_MIN + (random & 63)
-.ifdef BITBANG                  ; ~9 frames/s at 1.25 MHz: bigger steps per frame
+.ifdef BITBANG                  ; ~13.6 frames/s at 1.25 MHz (~10.8 at 1 MHz)
 FLAP_V   = $F200                ; -14 px/frame  ~ -125 px/s, rises ~33 px in ~0.5 s
 GRAV     = $0300                ; +3 px/frame^2
 MAXV     = $1000                ; fall speed cap 16 px/frame (must stay < 18)
 COL_WAIT = 11                   ; delay for a skipped column ~ cost of a pipe column
-.else
+.else                           ; auto-clock build: ~22 frames/s at 1.25 MHz (simulated)
 FLAP_V   = $F680                ; -9.5 px/frame   (8.8 fixed point) ~ -230 px/s
 GRAV     = $014D                ; +1.3 px/frame^2               ~ 750 px/s^2
 MAXV     = $0B00                ; fall speed cap 11 px/frame (must stay < 18)
