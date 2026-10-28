@@ -56,3 +56,7 @@ uv run python tools/profile.py     # simulator: cycles per frame stage
 - `asm/lcd2.inc`: the ST7789 driver, with the same init sequence as the ESP32 oreoWare driver.
 - 320x240 landscape. The world moves with the panel's hardware scroll. A fixed 20 px strip shows the live score.
 - 12-bit colour. The bird is compiled into RAM at boot. Pipes redraw only the rows that change.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md).

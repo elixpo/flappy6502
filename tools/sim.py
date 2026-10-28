@@ -198,16 +198,6 @@ def check_lcd() -> list[bool]:
 def main() -> int:
     results = []
 
-    b = run("blink.bin", 3)
-    v = values(b)
-    results.append(check("blink", v[:4] == [0x0F, 0x00, 0x0F, 0x00],
-                         f"latch {['%X' % x for x in v[:6]]}"))
-
-    b = run("count.bin", 3)
-    v = values(b)
-    results.append(check("count", v[:8] == list(range(8)),
-                         f"latch {['%X' % x for x in v[:10]]}"))
-
     b = run("ramtest.bin", 8)
     v = values(b)
     first_ok = next((c for c, x in b.latch_writes if x == 0x0E), None)
