@@ -8,10 +8,15 @@ Flappy Bird on a breadboard computer: Rockwell R6502 (NMOS), 28C64 EEPROM, 32 KB
 74LS00 decoder, a 74LS161 as the LCD port, and a SmartElex 2" ST7789 IPS LCD driven by
 bit-banged SPI. One button (NMI) flaps.
 
-**Status (2026-10-27): working on the real hardware.** `build/flappy_bb.bin`, played at
-1 MHz (about 10.8 frames/s; 13.6 at 1.25 MHz).
+**Status: working on the real hardware, played at 1 MHz.**
 
-![game running in the simulator](docs/screenshot.png)
+| Game | Size | What |
+|---|---|---|
+| [`roms/flappy1k.bin`](roms/flappy1k.bin) | **1,024 bytes** | colour Flappy Bird in 1 KiB, no firmware: sprite bird, digit score, shaded pipes, scrolling grass ([record evidence](docs/record/README.md)) |
+| [`roms/flappy_bb.bin`](roms/flappy_bb.bin) | about 8 KiB | the full game: 12-bit colour, compiled bird sprite, live score HUD, about 10.8 frames/s |
+| [`roms/flappy512.bin`](roms/flappy512.bin) | 512 bytes | black-and-white version: white blocks, a score bar |
+
+![flappy1k: the 1 KiB game](docs/flappy1k.png)
 
 ## Repository layout
 
@@ -31,8 +36,9 @@ The ST7789 module datasheet (SmartElex LHS200KP-IF05) is not included; get it fr
 ```bash
 python3 tools/gfx.py        # bird sprite + colours -> asm/gfx.inc (only after editing art)
 make                        # assemble asm/*.s -> build/*.bin (cc65 in ~/.local/opt/cc65)
-./flash roms/flappy_bb.bin  # Nano28C64 programmer: write, verify, re-verify (or build/ after make)
-uv run python tools/smoke2.py bb   # simulator: boot screen + frames/s
+./flash roms/flappy1k.bin   # Nano28C64 programmer: write, verify, re-verify (or build/ after make)
+uv run python tools/sim1k.py       # simulator: the 1 KiB game, boot, play, score, crash, restart
+uv run python tools/smoke2.py bb   # simulator: the full game, boot screen + frames/s
 uv run python tools/profile.py     # simulator: cycles per frame stage
 ```
 
@@ -50,9 +56,12 @@ uv run python tools/profile.py     # simulator: cycles per frame stage
 | `board_link.txt` | wires between the two breadboards |
 | `stage7_autoclock_spi.txt`, `stage6_spi_shifter.txt` | faster SPI options for later (need a 74LS00/74HCT00 or a 74HC165) |
 
-## Game
+## Games
 
-- `asm/flappy.s`: the game; `asm/flappy_bb.s` builds it for the bit-banged wiring.
+- `asm/flappy1k.s`: the 1 KiB game. Linked into `$FC00`-`$FFFF` by `asm/rom1k.cfg`, so the
+  build fails if it grows past 1,024 bytes. `asm/flappy512.s` + `asm/rom512.cfg` do the
+  same for 512 bytes.
+- `asm/flappy.s`: the full game; `asm/flappy_bb.s` builds it for the bit-banged wiring.
 - `asm/lcd2.inc`: the ST7789 driver, with the same init sequence as the ESP32 oreoWare driver.
 - 320x240 landscape. The world moves with the panel's hardware scroll. A fixed 20 px strip shows the live score.
 - 12-bit colour. The bird is compiled into RAM at boot. Pipes redraw only the rows that change.
