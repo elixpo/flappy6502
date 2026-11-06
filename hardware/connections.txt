@@ -51,44 +51,41 @@ U7 74LS04 is split in two halves:
   pins 1-6  (left side,  inverters 1-3) = LCD reset buffer      -> stage 9
   pin 14 = +5V, pin 7 = GND, shared.
 
-CRYSTAL OSCILLATOR: the parts and where each leg goes
-  Part              Leg / end 1        Leg / end 2
-  Y1 10 MHz crystal U7 9               U7 10          (no polarity: either leg either way)
-  R1 560R           U7 9               U7 8           (feedback across the first inverter)
-  C1 100nF          U7 8               U7 11          (couples the first inverter to the second)
-  R2 560R           U7 11              U7 10          (feedback across the second inverter)
-
-  The crystal sits across the two inverters: from the INPUT of the first (pin 9) to the
-  OUTPUT of the second (pin 10). Each inverter has its own 560R from its output back to
-  its input, and C1 joins them. Inverter 6 (pins 13 -> 12) buffers the result.
+CRYSTAL OSCILLATOR (as built): inverters 6 and 5 oscillate, inverter 4 buffers
+  Crystal Y1 10 MHz: one leg on pin 13, the other leg on pin 9 (no polarity)
+  Jumper:            pin 10 to pin 9
+  R1 560R:           pin 13 to pin 12
+  C1 100nF:          pin 12 to pin 11
+  R2 560R:           pin 11 to pin 10
+  Output:            pin 8 -> U6 pin 2 (10 MHz)
 
                 R1 560R                     R2 560R
          +------/\/\/------+         +------/\/\/------+
          |                 |         |                 |
-  pin 9 -+--[ inv 4 ]>o----+--||-----+--[ inv 5 ]>o----+-- pin 10 --[ inv 6 ]>o-- pin 12 -> 10 MHz
-  (4A)   |          pin 8 (4Y)  C1  pin 11 (5A)        |   = pin 13 (6A)          to U6 pin 2
+ pin 13 -+--[ inv 6 ]>o----+--||-----+--[ inv 5 ]>o----+-- pin 10 = pin 9 --[ inv 4 ]>o-- pin 8 -> 10 MHz
+  (6A)   |         pin 12 (6Y)  C1  pin 11 (5A)        |   (jumper)  (4A)        (4Y)   to U6 pin 2
          |                    100nF                    |
          +---------------------|[ Y1 ]|----------------+
                               10 MHz crystal
 
 U7 pin table, oscillator side
   Pin  Name  Connects to
-   9   4A    Y1 leg 1, R1 to pin 8
-   8   4Y    R1 to pin 9, C1 to pin 11
-  11   5A    C1 from pin 8, R2 to pin 10
-  10   5Y    R2 to pin 11, Y1 leg 2, pin 13
-  13   6A    pin 10
-  12   6Y    U6 2  (10 MHz clock out)
+  13   6A    Y1 leg 1, R1 to pin 12
+  12   6Y    R1 to pin 13, C1 to pin 11
+  11   5A    C1 from pin 12, R2 to pin 10
+  10   5Y    R2 to pin 11, jumper to pin 9
+   9   4A    Y1 leg 2, jumper from pin 10
+   8   4Y    U6 2  (10 MHz clock out)
   14   VCC   +5V (100nF to GND, right at the chip)
    7   GND   GND
 
-  Keep Y1, R1, R2 and C1 tight against U7 with short leads; keep pin 12 -> U6 pin 2 the
+  Keep Y1, R1, R2 and C1 tight against U7 with short leads; keep pin 8 -> U6 pin 2 the
   shortest wire on the board.
 
 U6 74LS161 - clock divider
   Pin  Name  Connects to
    1   /CLR  +5V
-   2   CLK   U7 12 (10 MHz)
+   2   CLK   U7 8 (10 MHz)
    3   A     GND
    4   B     GND
    5   C     GND
@@ -104,7 +101,7 @@ U6 74LS161 - clock divider
   15   RCO   n/c
   16   VCC   +5V (100nF to GND)
 
-  CHECK: DC volts at U7 12 = about 1.5-2.5 V (oscillating); pull the crystal out and it stops.
+  CHECK: DC volts at U7 8 = about 1.5-2.5 V (oscillating); pull the crystal out and it stops.
 
 
 =================================================================================
@@ -325,8 +322,8 @@ Flap button (SW2) on /NMI, at U1 6:
 =================================================================================
 PASSIVE PARTS
 =================================================================================
-  R1, R2   560R    oscillator feedback (U7 9-8, U7 11-10)
-  C1       100nF   oscillator coupling (U7 8 - U7 11)
+  R1, R2   560R    oscillator feedback (U7 13-12, U7 11-10)
+  C1       100nF   oscillator coupling (U7 12 - U7 11)
   R3-R6    3.3k    pull-ups: RDY, /IRQ, /NMI, SO
   R7       10k     /RES pull-up
   C2       10uF    power-on reset (U1 40 to GND)
@@ -358,7 +355,7 @@ NETS (same wiring, by signal)
   /IOSEL    U4 6, U5 9
   WR        U4 8, U4 13, U2 22, U3 22
   /WSTB     U4 11, U3 27, U5 2, C4
-  10 MHz    U7 12, U6 2
+  10 MHz    U7 8, U6 2
   LCD SDA   U5 14   LCD SCL  U5 13   LCD DC  U5 12   LCD CS  U5 11
   LCD RST/EN U7 4
 
