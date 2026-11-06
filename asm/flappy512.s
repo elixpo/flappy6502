@@ -2,7 +2,7 @@
 ; breadboard R6502 + ST7789 hardware as flappy_bb (SCL bit-banged on LCD latch pin 13).
 ; Linked into $FE00-$FFFF by rom512.cfg: the build fails if it does not fit.
 ;
-; Play: power on, the screen clears (about 13 s at 1 MHz), press the button to start.
+; Play: power on, the screen clears (about 11 s at 1.25 MHz), press the button to start.
 ; Each press flaps. Pass a pipe: the score bar (top left) grows by one block. Hit a
 ; pipe, the ground or the top: game over; press again to restart.
 ;

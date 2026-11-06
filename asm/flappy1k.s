@@ -3,7 +3,7 @@
 ; every byte that runs (LCD init, SPI, drawing, game) is in this 1 KiB.
 ; Linked into $FC00-$FFFF by rom1k.cfg: the build fails if it does not fit.
 ;
-; Play: power on, the scene draws (about 14 s at 1 MHz), press the button to start.
+; Play: power on, the scene draws (about 12.5 s at 1.25 MHz), press the button to start.
 ; Each press flaps. Score top left. Hit a pipe, the ground or the top: game over;
 ; press again to restart.
 ;

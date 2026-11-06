@@ -66,8 +66,8 @@ On the real chip, the programmer reads the EEPROM back and compares it byte for 
 
 ## 3. Self-built computer, original 1980s CPU
 
-- **CPU:** Rockwell R6502P, an original NMOS 6502, at 1 MHz from a 10 MHz crystal and a
-  74LS161 divider.
+- **CPU:** Rockwell R6502P, an original NMOS 6502, at 1.25 MHz: a 10 MHz crystal divided by 8 in a
+  74LS161.
 - **Memory:** 28C64 EEPROM (8 KiB) and 62256 SRAM (32 KiB). There is no VIA, ACIA or
   other support chip.
 - **Logic:** a 74LS00 address decoder, a 74LS161 as the LCD output port, and a 74LS04.
@@ -90,7 +90,7 @@ The player gets:
 - a two-digit score
 - game over, then restart on the next press
 
-It runs at about 8.3 frames per second at 1 MHz.
+It runs at about 10.4 frames per second at 1.25 MHz.
 
 Video of the real hardware, unedited from power-on through play, a crash and a restart:
 **[link to be added]**
@@ -124,6 +124,6 @@ include everything, down to the LCD driver.
 
 - **[`roms/flappy_bb.bin`](../../roms/flappy_bb.bin):** the full-size game this
   started from. It has 12-bit colour graphics and a bird compiled into RAM, and it
-  runs about 10.8 frames per second.
+  runs about 13.6 frames per second.
 - **[`roms/flappy512.bin`](../../roms/flappy512.bin):** a black-and-white 512-byte
   version. It has white blocks and a score bar, with no colour and no digits.

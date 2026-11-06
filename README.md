@@ -1,19 +1,19 @@
 # flappy6502
 
 [![Listed on 6502.org Homebuilt Projects](https://img.shields.io/badge/6502.org-Homebuilt%20Projects-2b6cb0)](https://6502.org/homebuilt/)
-[![CPU: R6502 NMOS](https://img.shields.io/badge/CPU-R6502%20NMOS%20%40%201%20MHz-555)](#)
+[![CPU: R6502 NMOS](https://img.shields.io/badge/CPU-R6502%20NMOS%20%40%201.25%20MHz-555)](#)
 [![Assembler: ca65](https://img.shields.io/badge/asm-ca65-555)](https://cc65.github.io/)
 
 Flappy Bird on a breadboard computer: Rockwell R6502 (NMOS), 28C64 EEPROM, 32 KB SRAM,
 74LS00 decoder, a 74LS161 as the LCD port, and a SmartElex 2" ST7789 IPS LCD driven by
 bit-banged SPI. One button (NMI) flaps.
 
-**Status: working on the real hardware, played at 1 MHz.**
+**Status: working on the real hardware, played at 1.25 MHz.**
 
 | Game | Size | What |
 |---|---|---|
 | [`roms/flappy1k.bin`](roms/flappy1k.bin) | **1,024 bytes** | colour Flappy Bird in 1 KiB, no firmware: sprite bird, digit score, shaded pipes, scrolling grass ([record evidence](docs/record/README.md)) |
-| [`roms/flappy_bb.bin`](roms/flappy_bb.bin) | about 8 KiB | the full game: 12-bit colour, compiled bird sprite, live score HUD, about 10.8 frames/s |
+| [`roms/flappy_bb.bin`](roms/flappy_bb.bin) | about 8 KiB | the full game: 12-bit colour, compiled bird sprite, live score HUD, about 13.6 frames/s |
 | [`roms/flappy512.bin`](roms/flappy512.bin) | 512 bytes | black-and-white version: white blocks, a score bar |
 
 ![flappy1k: the 1 KiB game](docs/flappy1k.png)

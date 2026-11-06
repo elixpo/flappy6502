@@ -15,7 +15,7 @@ from png import write_png
 from sim import BUILD, check
 from simgame import LiveLcd
 
-CLOCK, TFA, RING = 1_000_000, 64, 256
+CLOCK, TFA, RING = 1_250_000, 64, 256   # 10 MHz crystal / 8
 YH, VH, SCORE = 0x04, 0x05, 0x09
 
 
@@ -111,7 +111,7 @@ def main():
     r.append(check("boot: black sky, white ground line, waiting for a press",
                    waiting() and s[10][100] == BLACK and s[200][300] == BLACK
                    and s[161][5] == WHITE and s[161][300] == WHITE,
-                   f"{t():.1f} s at 1 MHz -> build/f512_1_boot.png"))
+                   f"{t():.1f} s at 1.25 MHz -> build/f512_1_boot.png"))
 
     run(t() + 0.2)                            # a person presses a while later
     mpu.nmi()
@@ -123,7 +123,7 @@ def main():
     write_png(BUILD / "f512_2_play.png", s)
     pts = b.ram[SCORE] // 9
     r.append(check("plays: bot passes 5 pipes", pts >= 5,
-                   f"{pts} points in {t() - t0:.1f} s, {fps:.1f} frames/s at 1 MHz "
+                   f"{pts} points in {t() - t0:.1f} s, {fps:.1f} frames/s at 1.25 MHz "
                    f"-> build/f512_2_play.png"))
     r.append(check("score bar drawn", s[2][7] == WHITE and s[2 + 9 * (pts - 1)][7] == WHITE,
                    "one 8x8 block per point, top left"))

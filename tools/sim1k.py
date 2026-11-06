@@ -15,7 +15,7 @@ from png import write_png
 from sim import BUILD, check
 from simgame import LiveLcd
 
-CLOCK, TFA, RING = 1_000_000, 64, 256
+CLOCK, TFA, RING = 1_250_000, 64, 256   # 10 MHz crystal / 8
 YH, VH, SCORE = 0x04, 0x05, 0x08
 SKY = (8 << 11) | (51 << 5) | 25      # $4CC as the model stores it (565)
 
@@ -111,7 +111,7 @@ def main():
     r.append(check("boot: sky, ground, bird, score 00, waiting for a press",
                    waiting() and s[100][200] == SKY and s[200][300] != SKY
                    and s[77][56] != SKY and s[7][5] == WHITE,
-                   f"{t():.1f} s at 1 MHz -> build/f1k_1_boot.png"))
+                   f"{t():.1f} s at 1.25 MHz -> build/f1k_1_boot.png"))
 
     run(t() + 0.2)                            # a person presses a while later
     mpu.nmi()
@@ -123,7 +123,7 @@ def main():
     write_png(BUILD / "f1k_2_play.png", s)
     pts = b.ram[SCORE]
     r.append(check("plays: bot passes 5 pipes", pts >= 5,
-                   f"{pts} points in {t() - t0:.1f} s, {fps:.1f} frames/s at 1 MHz "
+                   f"{pts} points in {t() - t0:.1f} s, {fps:.1f} frames/s at 1.25 MHz "
                    f"-> build/f1k_2_play.png"))
     r.append(check("score digit drawn", s[7][14] == WHITE, "ones digit at x 14"))
 
