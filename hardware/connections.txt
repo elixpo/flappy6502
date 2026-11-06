@@ -204,7 +204,7 @@ STAGE 5 - ADDRESS DECODER 74LS00 (U4)
    8   3Y WR       U2 22, U3 22, U4 13
    9   3A          U1 34 (R/W)
   10   3B          U1 34 (R/W)
-  11   4Y /WSTB    U3 27, U5 2 (via a 10pF to GND at U5 2: stage 7)
+  11   4Y /WSTB    U3 27 (direct), R8 100R -> U5 2 (latch branch only; 10pF at U5 2)
   12   4A          U1 39 (phi2)
   13   4B          U4 8
   14   VCC         +5V (100nF to GND)
@@ -255,7 +255,8 @@ STAGE 7 - LCD LATCH 74LS161 (U5)  at $8000
 
   Pin  Name   Connects to
    1   /CLR   U1 40 (/RES)          (all LCD lines low during reset)
-   2   CLK    U4 11 (/WSTB), and C4 10pF to GND right at this pin (stops ringing)
+   2   CLK    U4 11 (/WSTB) through R8 100R (at the decoder end), and C4 10pF to GND
+                right at this pin (together they stop ringing on the long wire)
    3   A      U1 33 (D0)
    4   B      U1 32 (D1)
    5   C      U1 31 (D2)
@@ -330,6 +331,7 @@ PASSIVE PARTS
   C3       100nF   flap button debounce
   100R             flap button series resistor
   C4       10pF    latch clock (U5 2) to GND
+  R8       100R    in series, U4 11 -> U5 2 (latch branch, at the decoder end)
   C5, C8   10uF    +5V bulk
   C6       100nF   +5V at the input
   C7       470uF   +5V bulk at the adapter
@@ -354,7 +356,7 @@ NETS (same wiring, by signal)
   /ROMCS    U4 3, U4 5, U2 20
   /IOSEL    U4 6, U5 9
   WR        U4 8, U4 13, U2 22, U3 22
-  /WSTB     U4 11, U3 27, U5 2, C4
+  /WSTB     U4 11, U3 27, R8 -> U5 2, C4
   10 MHz    U7 8, U6 2
   LCD SDA   U5 14   LCD SCL  U5 13   LCD DC  U5 12   LCD CS  U5 11
   LCD RST/EN U7 4
