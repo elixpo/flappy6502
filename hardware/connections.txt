@@ -46,19 +46,44 @@ STAGE 1 - POWER
 STAGE 2 - CLOCK: 74LS04 (U7) OSCILLATOR + 74LS161 (U6) DIVIDER
 =================================================================================
 
-U7 74LS04 - oscillator side (gates 4, 5, 6)
-  Pin  Name  Connects to
-   9   4A    Y1 leg 1, R1 560R to U7 8
-   8   4Y    R1 560R to U7 9, C1 100nF to U7 11
-  11   5A    C1 100nF from U7 8, R2 560R to U7 10
-  10   5Y    R2 560R to U7 11, Y1 leg 2, U7 13
-  13   6A    U7 10
-  12   6Y    U6 2  (10 MHz clock out)
-  14   VCC   +5V (100nF to GND)
-   7   GND   GND
-  (Pins 1-6 are the reset buffer: see stage 9.)
+U7 74LS04 is split in two halves:
+  pins 8-13 (right side, inverters 4-6) = crystal oscillator   <- this stage
+  pins 1-6  (left side,  inverters 1-3) = LCD reset buffer      -> stage 9
+  pin 14 = +5V, pin 7 = GND, shared.
 
-  Keep Y1, R1, R2 and C1 tight against U7 with short leads.
+CRYSTAL OSCILLATOR: the parts and where each leg goes
+  Part              Leg / end 1        Leg / end 2
+  Y1 10 MHz crystal U7 9               U7 10          (no polarity: either leg either way)
+  R1 560R           U7 9               U7 8           (feedback across the first inverter)
+  C1 100nF          U7 8               U7 11          (couples the first inverter to the second)
+  R2 560R           U7 11              U7 10          (feedback across the second inverter)
+
+  The crystal sits across the two inverters: from the INPUT of the first (pin 9) to the
+  OUTPUT of the second (pin 10). Each inverter has its own 560R from its output back to
+  its input, and C1 joins them. Inverter 6 (pins 13 -> 12) buffers the result.
+
+                R1 560R                     R2 560R
+         +------/\/\/------+         +------/\/\/------+
+         |                 |         |                 |
+  pin 9 -+--[ inv 4 ]>o----+--||-----+--[ inv 5 ]>o----+-- pin 10 --[ inv 6 ]>o-- pin 12 -> 10 MHz
+  (4A)   |          pin 8 (4Y)  C1  pin 11 (5A)        |   = pin 13 (6A)          to U6 pin 2
+         |                    100nF                    |
+         +---------------------|[ Y1 ]|----------------+
+                              10 MHz crystal
+
+U7 pin table, oscillator side
+  Pin  Name  Connects to
+   9   4A    Y1 leg 1, R1 to pin 8
+   8   4Y    R1 to pin 9, C1 to pin 11
+  11   5A    C1 from pin 8, R2 to pin 10
+  10   5Y    R2 to pin 11, Y1 leg 2, pin 13
+  13   6A    pin 10
+  12   6Y    U6 2  (10 MHz clock out)
+  14   VCC   +5V (100nF to GND, right at the chip)
+   7   GND   GND
+
+  Keep Y1, R1, R2 and C1 tight against U7 with short leads; keep pin 12 -> U6 pin 2 the
+  shortest wire on the board.
 
 U6 74LS161 - clock divider
   Pin  Name  Connects to
