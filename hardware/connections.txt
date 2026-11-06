@@ -1,0 +1,341 @@
+FLAPPY6502 - ALL CONNECTIONS OF THE WORKING BUILD, STAGE BY STAGE
+=================================================================
+This file replaces the older stage notes. full_pinmap.txt is the stage-2 state, and
+board_link.txt shows the abandoned stage-7 SCL gate and LCD pull-ups.
+Matches hardware/flappy6502_schematic.pdf (netlist-checked).
+Pin numbers are IC pin numbers (DIP: pin 1 at the notch / dot, counted down the left
+side, then up the right). "n/c" = nothing connected.
+
+CHIPS
+-----
+  U1  R6502P       DIP-40   CPU (NMOS 6502)
+  U2  28C64        DIP-28   EEPROM 8 KiB, at $E000-$FFFF (also seen at $C000-$DFFF)
+  U3  HY62CT08081E DIP-28   SRAM 32 KiB, at $0000-$7FFF (62256 pinout)
+  U4  74LS00       DIP-14   address decoder (4 NAND gates)
+  U5  74LS161      DIP-16   LCD latch / output port, at $8000-$BFFF
+  U6  74LS161      DIP-16   clock divider (10 MHz -> CPU clock)
+  U7  74LS04       DIP-14   crystal oscillator (gates 4-6) + LCD reset buffer (gates 1-2)
+  Y1  10 MHz crystal (2 legs, no polarity)
+  J1  2" ST7789 SPI LCD module (SmartElex LHS200KP-IF05): VCC GND SDA SCL DC CS RST EN TE
+  SW1 reset button     SW2 flap button
+
+Memory map: RAM $0000-$7FFF | LCD latch $8000-$BFFF | EEPROM $C000-$FFFF (code at $E000)
+
+
+=================================================================================
+STAGE 1 - POWER
+=================================================================================
+  5 V 2 A adapter -> TP4056 board IN+ / IN- pads -> +5V and GND rails.
+  470uF (C7) + 10uF (C8) + 10uF (C5) + 100nF (C6) across +5V / GND at the input.
+  Join the +5V rails and the GND rails on BOTH sides of BOTH breadboards.
+  Every chip: a 100nF ceramic from its VCC pin to its GND pin, right at the chip.
+
+  Chip    VCC (+5V)   GND
+  U1      8           1, 21
+  U2      28          14
+  U3      28          14
+  U4      14          7
+  U5      16          8
+  U6      16          8
+  U7      14          7
+
+  CHECK: +5V to GND must NOT beep. Powered: 4.75-5.25 V at every VCC pin.
+
+
+=================================================================================
+STAGE 2 - CLOCK: 74LS04 (U7) OSCILLATOR + 74LS161 (U6) DIVIDER
+=================================================================================
+
+U7 74LS04 - oscillator side (gates 4, 5, 6)
+  Pin  Name  Connects to
+   9   4A    Y1 leg 1, R1 560R to U7 8
+   8   4Y    R1 560R to U7 9, C1 100nF to U7 11
+  11   5A    C1 100nF from U7 8, R2 560R to U7 10
+  10   5Y    R2 560R to U7 11, Y1 leg 2, U7 13
+  13   6A    U7 10
+  12   6Y    U6 2  (10 MHz clock out)
+  14   VCC   +5V (100nF to GND)
+   7   GND   GND
+  (Pins 1-6 are the reset buffer: see stage 9.)
+
+  Keep Y1, R1, R2 and C1 tight against U7 with short leads.
+
+U6 74LS161 - clock divider
+  Pin  Name  Connects to
+   1   /CLR  +5V
+   2   CLK   U7 12 (10 MHz)
+   3   A     GND
+   4   B     GND
+   5   C     GND
+   6   D     GND
+   7   ENP   +5V
+   8   GND   GND
+   9   /LOAD +5V
+  10   ENT   +5V
+  11   QD    n/c      (625 kHz = 10 MHz / 16, the slower option)
+  12   QC    U1 37    (CPU clock: 1.25 MHz = 10 MHz / 8)
+  13   QB    n/c
+  14   QA    n/c
+  15   RCO   n/c
+  16   VCC   +5V (100nF to GND)
+
+  CHECK: DC volts at U7 12 = about 1.5-2.5 V (oscillating); pull the crystal out and it stops.
+
+
+=================================================================================
+STAGE 3 - CPU R6502P (U1)
+=================================================================================
+  Pin  Name      Connects to
+   1   VSS       GND
+   2   RDY       R3 3.3k to +5V
+   3   phi1 out  n/c
+   4   /IRQ      R4 3.3k to +5V
+   5   NC        n/c
+   6   /NMI      R5 3.3k to +5V, flap button node (stage 9)
+   7   SYNC      n/c
+   8   VCC       +5V (100nF to GND)
+   9   A0        U2 10, U3 10
+  10   A1        U2 9,  U3 9
+  11   A2        U2 8,  U3 8
+  12   A3        U2 7,  U3 7
+  13   A4        U2 6,  U3 6
+  14   A5        U2 5,  U3 5
+  15   A6        U2 4,  U3 4
+  16   A7        U2 3,  U3 3
+  17   A8        U2 25, U3 25
+  18   A9        U2 24, U3 24
+  19   A10       U2 21, U3 21
+  20   A11       U2 23, U3 23
+  21   VSS       GND
+  22   A12       U2 2,  U3 2
+  23   A13       U3 26
+  24   A14       U3 1,  U4 2
+  25   A15       U3 20, U4 1, U4 4
+  26   D7        U2 19, U3 19
+  27   D6        U2 18, U3 18
+  28   D5        U2 17, U3 17
+  29   D4        U2 16, U3 16
+  30   D3        U2 15, U3 15, U5 6
+  31   D2        U2 13, U3 13, U5 5
+  32   D1        U2 12, U3 12, U5 4
+  33   D0        U2 11, U3 11, U5 3
+  34   R/W       U4 9, U4 10
+  35   NC        n/c
+  36   NC        n/c
+  37   phi0 in   U6 12 (QC)
+  38   SO        R6 3.3k to +5V
+  39   phi2 out  U4 12
+  40   /RES      R7 10k to +5V, C2 10uF to GND (+ to pin 40), SW1 reset button to GND,
+                 U5 1, U7 1
+
+
+=================================================================================
+STAGE 4 - EEPROM 28C64 (U2)
+=================================================================================
+  Pin  Name      Connects to
+   1   RDY/BUSY  n/c
+   2   A12       U1 22
+   3   A7        U1 16
+   4   A6        U1 15
+   5   A5        U1 14
+   6   A4        U1 13
+   7   A3        U1 12
+   8   A2        U1 11
+   9   A1        U1 10
+  10   A0        U1 9
+  11   D0        U1 33
+  12   D1        U1 32
+  13   D2        U1 31
+  14   GND       GND
+  15   D3        U1 30
+  16   D4        U1 29
+  17   D5        U1 28
+  18   D6        U1 27
+  19   D7        U1 26
+  20   /CE       U4 3   (/ROMCS)
+  21   A10       U1 19
+  22   /OE       U4 8   (WR)
+  23   A11       U1 20
+  24   A9        U1 18
+  25   A8        U1 17
+  26   NC        n/c
+  27   /WE       +5V    (never written by the CPU)
+  28   VCC       +5V (100nF to GND)
+
+
+=================================================================================
+STAGE 5 - ADDRESS DECODER 74LS00 (U4)
+=================================================================================
+  /ROMCS = NAND(A15, A14)     low for $C000-$FFFF      -> EEPROM /CE
+  /IOSEL = NAND(A15, /ROMCS)  low for $8000-$BFFF      -> LCD latch /LOAD
+  WR     = NAND(R/W, R/W)     = NOT R/W, low on reads  -> EEPROM /OE, SRAM /OE
+  /WSTB  = NAND(phi2, WR)     low in phi2 of a write   -> SRAM /WE, LCD latch CLK
+
+  Pin  Name        Connects to
+   1   1A          U1 25 (A15)
+   2   1B          U1 24 (A14)
+   3   1Y /ROMCS   U2 20, U4 5
+   4   2A          U1 25 (A15)
+   5   2B          U4 3
+   6   2Y /IOSEL   U5 9
+   7   GND         GND
+   8   3Y WR       U2 22, U3 22, U4 13
+   9   3A          U1 34 (R/W)
+  10   3B          U1 34 (R/W)
+  11   4Y /WSTB    U3 27, U5 2 (via a 10pF to GND at U5 2: stage 7)
+  12   4A          U1 39 (phi2)
+  13   4B          U4 8
+  14   VCC         +5V (100nF to GND)
+
+
+=================================================================================
+STAGE 6 - SRAM HY62CT08081E (U3)
+=================================================================================
+  Pins 2-13 and 15-25 match the EEPROM pin for pin: same signal, same number.
+
+  Pin  Name   Connects to
+   1   A14    U1 24
+   2   A12    U1 22
+   3   A7     U1 16
+   4   A6     U1 15
+   5   A5     U1 14
+   6   A4     U1 13
+   7   A3     U1 12
+   8   A2     U1 11
+   9   A1     U1 10
+  10   A0     U1 9
+  11   D0     U1 33
+  12   D1     U1 32
+  13   D2     U1 31
+  14   GND    GND
+  15   D3     U1 30
+  16   D4     U1 29
+  17   D5     U1 28
+  18   D6     U1 27
+  19   D7     U1 26
+  20   /CS    U1 25 (A15)
+  21   A10    U1 19
+  22   /OE    U4 8  (WR)
+  23   A11    U1 20
+  24   A9     U1 18
+  25   A8     U1 17
+  26   A13    U1 23
+  27   /WE    U4 11 (/WSTB)
+  28   VCC    +5V (100nF to GND)
+
+
+=================================================================================
+STAGE 7 - LCD LATCH 74LS161 (U5)  at $8000
+=================================================================================
+  Used as a 4-bit register, not a counter: /LOAD is held low while the CPU writes
+  $8000-$BFFF, and the write strobe clocks D0-D3 in.
+  Bits: bit0 SDA, bit1 SCL, bit2 DC, bit3 CS.
+
+  Pin  Name   Connects to
+   1   /CLR   U1 40 (/RES)          (all LCD lines low during reset)
+   2   CLK    U4 11 (/WSTB), and C4 10pF to GND right at this pin (stops ringing)
+   3   A      U1 33 (D0)
+   4   B      U1 32 (D1)
+   5   C      U1 31 (D2)
+   6   D      U1 30 (D3)
+   7   ENP    GND
+   8   GND    GND
+   9   /LOAD  U4 6 (/IOSEL)
+  10   ENT    GND
+  11   QD     LCD CS
+  12   QC     LCD DC
+  13   QB     LCD SCL
+  14   QA     LCD SDA
+  15   RCO    n/c
+  16   VCC    +5V (100nF to GND)
+
+
+=================================================================================
+STAGE 8 - LCD MODULE (J1)  ST7789, 320x240
+=================================================================================
+  RULE: never feed an LCD input 5 V, and every LCD input is low while the module powers
+  up. NO pull-ups, NO series resistors, NO dividers on any LCD pin.
+
+  LCD pin  Connects to                  Level
+  VCC      +5V (10uF + 100nF at module)  module makes its own 3.3 V
+  GND      GND
+  SDA      U5 14 (QA), direct            0 / about 3.4 V
+  SCL      U5 13 (QB), direct
+  DC       U5 12 (QC), direct
+  CS       U5 11 (QD), direct
+  RST      U7 4                          low during CPU reset, high after
+  EN       U7 4 (same wire as RST)
+  TE       n/c
+
+
+=================================================================================
+STAGE 9 - BUTTONS AND RESET
+=================================================================================
+
+Reset (SW1) and power-on reset, at U1 40:
+  U1 40 -- R7 10k -- +5V
+  U1 40 -- C2 10uF -- GND   (+ side to pin 40; about 100 ms power-on reset)
+  U1 40 -- SW1 -- GND       (4-leg button: use two diagonally opposite legs)
+
+LCD reset buffer (U7 74LS04 gates 1, 2), so the LCD's RST/EN follow /RES:
+  Pin  Name  Connects to
+   1   1A    U1 40 (/RES)
+   2   1Y    U7 3
+   3   2A    U7 2
+   4   2Y    LCD RST and LCD EN
+   5   3A    GND (unused gate: input tied low)
+   6   3Y    n/c
+
+Flap button (SW2) on /NMI, at U1 6:
+  U1 6 -- R5 3.3k -- +5V            (the pull-up, from stage 3)
+  U1 6 -- one wire -- BUTTON NODE   (a free breadboard strip next to the button)
+  BUTTON NODE -- C3 100nF -- GND    (debounce)
+  BUTTON NODE -- 100R -- SW2 leg A
+  SW2 leg B -- GND
+
+  CHECK: U1 6 reads about 5 V released and about 0 V held down. If it is low when
+  released, the button legs are the wrong pair: turn the button 90 degrees.
+
+
+=================================================================================
+PASSIVE PARTS
+=================================================================================
+  R1, R2   560R    oscillator feedback (U7 9-8, U7 11-10)
+  C1       100nF   oscillator coupling (U7 8 - U7 11)
+  R3-R6    3.3k    pull-ups: RDY, /IRQ, /NMI, SO
+  R7       10k     /RES pull-up
+  C2       10uF    power-on reset (U1 40 to GND)
+  C3       100nF   flap button debounce
+  100R             flap button series resistor
+  C4       10pF    latch clock (U5 2) to GND
+  C5, C8   10uF    +5V bulk
+  C6       100nF   +5V at the input
+  C7       470uF   +5V bulk at the adapter
+  100nF x7         one per chip, VCC to GND
+  10uF + 100nF     at the LCD module
+
+
+=================================================================================
+NETS (same wiring, by signal)
+=================================================================================
+  A0-A12    U1 9-20, 22  -> U2 and U3 (same pins on both memories)
+  A13       U1 23, U3 26
+  A14       U1 24, U3 1, U4 2
+  A15       U1 25, U3 20, U4 1, U4 4
+  D0-D3     U1 33/32/31/30, U2 11/12/13/15, U3 11/12/13/15, U5 3/4/5/6
+  D4-D7     U1 29/28/27/26, U2 16/17/18/19, U3 16/17/18/19
+  R/W       U1 34, U4 9, U4 10
+  phi2      U1 39, U4 12
+  phi0      U1 37, U6 12
+  /RES      U1 40, U5 1, U7 1, R7, C2, SW1
+  /NMI      U1 6, R5, button node (C3, 100R, SW2)
+  /ROMCS    U4 3, U4 5, U2 20
+  /IOSEL    U4 6, U5 9
+  WR        U4 8, U4 13, U2 22, U3 22
+  /WSTB     U4 11, U3 27, U5 2, C4
+  10 MHz    U7 12, U6 2
+  LCD SDA   U5 14   LCD SCL  U5 13   LCD DC  U5 12   LCD CS  U5 11
+  LCD RST/EN U7 4
+
+MUST NOT BEEP (power off): +5V to GND; U1 37 to U1 39; any two of U4 3, 6, 8, 11;
+neighbouring address or data pins; U3 1 to U3 26 (A14 vs A13).
